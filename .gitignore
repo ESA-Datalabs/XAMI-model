@@ -1,1 +1,14 @@
 .ipynb_checkpoints/
+extracted_sources_bboxes_points.json
+yolov8n.pt
+*.pyc
+*.pth
+*.pth
+*.json
+/xmm_om_images_v4-contrast-512-1/*
+/weight/*
+/weights/*  
+/plots/*
+*.png
+*.jpg
+*.pdf
