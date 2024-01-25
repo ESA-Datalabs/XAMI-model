@@ -54,9 +54,54 @@ def image_stretch(data, stretch='log', factor=1):
 		raise ValueError('Invalid stretch option')
 	
 	data_log_stretched[positive_mask] = stretch(data[positive_mask])
-	# data_log_stretched = stretch(data)
 
 	return data_log_stretched
+
+
+def rescale_flattened_image(image: np.ndarray, 
+                            negative_mask: np.ndarray, 
+                            target_mean: float, 
+                            target_std: float, 
+                            epsilon: float = 1e-8) -> np.ndarray:
+    """
+    Rescales the pixel values of an image to a specified mean and standard deviation, 
+    excluding pixels marked by a negative mask.
+
+    This function flattens the image and the negative mask, filters out the pixels 
+    marked by the negative mask, and rescales the values to a target mean and std. 
+    Finally, it reconstructs the image from the rescaled flattened pixel values.
+
+    Parameters:
+    - image (numpy.ndarray): The original image as a 2D or 3D array.
+    - negative_mask (numpy.ndarray): A boolean mask array where True indicates 
+      pixels to be excluded from rescaling.
+    - target_mean (float): The target mean value for rescaling.
+    - target_std (float): The target standard deviation for rescaling.
+    - epsilon (float, optional): A small value added to standard deviation to 
+      prevent division by zero. Default is 1e-8.
+
+    Returns:
+    - final_image (numpy.ndarray): The image after rescaling, with the same shape 
+      as the input image.
+    """
+    
+    flat_image = image.flatten()
+    flat_mask = negative_mask.flatten()
+
+    non_negative_pixels = flat_image>0
+
+    # Filter out the negative mask pixels
+    filtered_pixels = flat_image[non_negative_pixels]
+
+    mean = np.mean(filtered_pixels)
+    std = np.std(filtered_pixels)
+
+    rescaled_pixels = (filtered_pixels - mean) / (std + epsilon) * target_std + target_mean
+
+    flat_image[non_negative_pixels] = rescaled_pixels
+    final_image = flat_image.reshape(image.shape)
+
+    return final_image
 
 def zscale_image(input_path, output_folder, with_image_stretch=False):
 	hdul = fits.open(input_path)
@@ -127,7 +172,7 @@ def detect_and_deblend_sources(data_orig, hw_threshold=0, clip_sigma=3.0, kernel
 		if verbose:
 			print(f"Background: {bkg.background_median}\nBackground RMS: {bkg.background_rms_median}")
 
-		threshold = 1.2 * bkg.background_rms # n-sigma threshold
+		threshold = 1.2 * bkg.background_rms # type: ignore # n-sigma threshold
 		kernel = make_2dgaussian_kernel(kernel_sigma, size=5) # enhance the visibility of significant features while reducing the impact 
 															  # of random noise or small irrelevant details
 		convolved_data = convolve(data, kernel)
@@ -164,15 +209,15 @@ def detect_and_deblend_sources(data_orig, hw_threshold=0, clip_sigma=3.0, kernel
 		cat = SourceCatalog(data, segm_deblend, convolved_data=convolved_data)
 		tbl = cat.to_table()
 
-		tbl['xcentroid'].info.format = '.2f'
-		tbl['ycentroid'].info.format = '.2f'
-		tbl['kron_flux'].info.format = '.2f'
-		tbl['kron_fluxerr'].info.format = '.2f'
-		tbl['area'].info.format = '.2f'
+		tbl['xcentroid'].info.format = '.2f' # type: ignore
+		tbl['ycentroid'].info.format = '.2f' # type: ignore
+		tbl['kron_flux'].info.format = '.2f' # type: ignore
+		tbl['kron_fluxerr'].info.format = '.2f' # type: ignore
+		tbl['area'].info.format = '.2f' # type: ignore
 		# print(tbl['bbox_xmax'].value - tbl['bbox_xmin'].value)
 		# print(tbl['bbox_ymax'].value - tbl['bbox_ymin'].value)
-		relevant_sources_tbl = tbl[(abs(tbl['bbox_xmax'].value - tbl['bbox_xmin'].value) > hw_threshold) & 
-							(abs(tbl['bbox_ymax'].value - tbl['bbox_ymin'].value) > hw_threshold)]
+		relevant_sources_tbl = tbl[(abs(tbl['bbox_xmax'].value - tbl['bbox_xmin'].value) > hw_threshold) &  # type: ignore
+							(abs(tbl['bbox_ymax'].value - tbl['bbox_ymin'].value) > hw_threshold)] # type: ignore
 		# print('flux:', relevant_sources_tbl['kron_flux'].value)
 
 		if verbose:

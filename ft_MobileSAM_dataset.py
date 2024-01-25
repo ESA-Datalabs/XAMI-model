@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# ## Set up
+# # Set up
 
-# In[1]:
+# In[ ]:
 
 
 PYTORCH_NO_CUDA_MEMORY_CACHING=1
@@ -37,12 +37,27 @@ import dataset_utils
 reload(dataset_utils)
 from dataset_utils import *
 
+import predictor_utils
+reload(predictor_utils)
+from predictor_utils import *
 
-# In[4]:
+
+# In[ ]:
 
 
-input_dir = '/workspace/raid/OM_DeepLearning/XMM_OM_code/xmm_om_images_v4-contrast-512-1/train/'
-json_file_path = '/workspace/raid/OM_DeepLearning/XMM_OM_code/xmm_om_images_v4-contrast-512-1/train/_annotations.coco.json'
+# !pip install roboflow
+
+# from roboflow import Roboflow
+# rf = Roboflow(api_key="GGtO5x2eJ77Wa0rLpQSt")
+# project = rf.workspace("orij").project("xmm_om_images-contrast-512-v5")
+# dataset = project.version(3).download("coco")
+
+
+# In[ ]:
+
+
+input_dir = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/xmm_om_images-contrast-512-v5-3/train/'
+json_file_path = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/xmm_om_images-contrast-512-v5-3/train/_annotations.coco.json'
 
 with open(json_file_path) as f:
     data = json.load(f)
@@ -50,7 +65,7 @@ with open(json_file_path) as f:
 ground_truth_masks, bbox_coords = get_coords_and_masks_from_json(input_dir, data)
 
 
-# In[5]:
+# In[ ]:
 
 
 image_paths_no_augm = [input_dir+img_data['file_name'] for img_data in data['images']]
@@ -58,13 +73,13 @@ len(image_paths_no_augm)
 
 
 # ## Augmentation
-
+# 
 # This algorithm performs augmentations and updates the negative masks in the case of a geometric transformations. Otherwise, it masks the result of a contrastive transformation given the mask of the initial image. Usually, the geometrical and contrastive transformations are not used simultaneously, as the notion of $<0$ pixels (negative mask) is lost.
 # 
 # **!! For augmentation, the bboxes are expected to be in the XYHW format, not XYXY format (used by SAM). However, the SAM AMG generated results are in the XYHW format (converted from XYXY).**
 # 
 
-# In[6]:
+# In[ ]:
 
 
 import os
@@ -76,7 +91,7 @@ for file in files:
     os.remove(file)
 
 
-# In[7]:
+# In[ ]:
 
 
 # https://albumentations.ai/docs/examples/showcase/
@@ -121,7 +136,7 @@ noise_blur_augmentations = A.Compose([
     A.GaussianBlur(blur_limit=(3, 3), p=1),
     A.GaussNoise(var_limit=(10.0, 50.0), p=1),
     A.ISONoise(p=0.8),
-    A.RandomBrightnessContrast(brightness_limit=0, contrast_limit=0.2, p=1) 
+    # A.RandomBrightnessContrast(brightness_limit=0, contrast_limit=0.2, p=1) 
 ], bbox_params={'format':'coco', 'min_area': 0.1, 'min_visibility': 0.3, 'label_fields': ['category_id']}, p=1)
 
 def align_masks_and_bboxes(augmented_set):
@@ -147,63 +162,63 @@ def align_masks_and_bboxes(augmented_set):
 image_paths = []
 for image_path in image_paths_no_augm:
     image_paths.append(image_path)
-    print(image_path)
-    image_ = cv2.imread(image_path)
-    image_ = cv2.cvtColor(image_, cv2.COLOR_BGR2RGB)
+    # print(image_path)
+    # image_ = cv2.imread(image_path)
+    # image_ = cv2.cvtColor(image_, cv2.COLOR_BGR2RGB)
     
-    masks = [value_i for key_i, value_i in ground_truth_masks.items() if image_path.split('/')[-1] in key_i]
+    # masks = [value_i for key_i, value_i in ground_truth_masks.items() if image_path.split('/')[-1] in key_i]
 
-    image_size = (image_.shape[0], image_.shape[1])
+    # image_size = (image_.shape[0], image_.shape[1])
     
-    # Enlarge the bounding boxes
-    bboxes_ = [enlarge_bbox(np.array([value_i[0], math.floor(value_i[1]),  math.floor(value_i[2] - value_i[0]), math.floor(value_i[3] - value_i[1])]), 5, image_size) \
-               for key_i, value_i in bbox_coords.items() if image_path.split('/')[-1] in key_i]   
+    # # Enlarge the bounding boxes
+    # bboxes_ = [enlarge_bbox(np.array([value_i[0], math.floor(value_i[1]),  math.floor(value_i[2] - value_i[0]), math.floor(value_i[3] - value_i[1])]), 5, image_size) \
+    #            for key_i, value_i in bbox_coords.items() if image_path.split('/')[-1] in key_i]   
 
-    label_ids = [1] * len(masks) # change this
-    label_names = ['star'] # change this
+    # label_ids = [1] * len(masks) # change this
+    # label_names = ['star'] # change this
     
-    img_negative_mask = (image_>0).astype(int)
+    # img_negative_mask = (image_>0).astype(int)
 
-    augmented1 = augment_and_show(geometrical_augmentations, image_, masks, bboxes_, label_ids, label_names, show_title=False)
-    new_image_negative_mask = (augmented1['image']>0).astype(int)
-    print(len(augmented1['masks']), len(augmented1['bboxes']))
+    # augmented1 = augment_and_show(geometrical_augmentations, image_, masks, bboxes_, label_ids, label_names, show_title=False)
+    # new_image_negative_mask = (augmented1['image']>0).astype(int)
+    # print(len(augmented1['masks']), len(augmented1['bboxes']))
     
-    augmented2 = augment_and_show(intensity_color_augmentations, augmented1['image'],  augmented1['masks'],  augmented1['bboxes'], augmented1['category_id'], label_names, show_title=False)
+    # # augmented2 = augment_and_show(intensity_color_augmentations, augmented1['image'],  augmented1['masks'],  augmented1['bboxes'], augmented1['category_id'], label_names, show_title=False)
     
-    # mask the transform which is derived from the geometric transform
-    augmented2['image'] = augmented2['image'] * new_image_negative_mask
+    # # mask the transform which is derived from the geometric transform
+    # # augmented2['image'] = augmented2['image'] * new_image_negative_mask
     
-    augmented3 = augment_and_show(noise_blur_augmentations, image_, masks, bboxes_, label_ids, label_names, show_title=False)
+    # augmented3 = augment_and_show(noise_blur_augmentations, image_, masks, bboxes_, label_ids, label_names, show_title=False)
     
-    # mask the transform using the image negative mask
-    augmented3['image'] = augmented3['image'] * img_negative_mask
+    # # mask the transform using the image negative mask
+    # augmented3['image'] = augmented3['image'] * img_negative_mask
         
-    new_filename1 = image_path.replace('.'+image_path.split('.')[-1], '_augm1.jpg')
-    new_filename2 = image_path.replace('.'+image_path.split('.')[-1], '_augm2.jpg')
-    new_filename3 = image_path.replace('.'+image_path.split('.')[-1], '_augm3.jpg')
+    # new_filename1 = image_path.replace('.'+image_path.split('.')[-1], '_augm1.jpg')
+    # new_filename2 = image_path.replace('.'+image_path.split('.')[-1], '_augm2.jpg')
+    # new_filename3 = image_path.replace('.'+image_path.split('.')[-1], '_augm3.jpg')
 
-    augmented1 = align_masks_and_bboxes(augmented1)
-    augmented2 = align_masks_and_bboxes(augmented2)
-    augmented3 = align_masks_and_bboxes(augmented3)
+    # augmented1 = align_masks_and_bboxes(augmented1)
+    # # augmented2 = align_masks_and_bboxes(augmented2)
+    # augmented3 = align_masks_and_bboxes(augmented3)
 
-    update_dataset_with_augms(augmented1, new_filename1, bbox_coords, ground_truth_masks, image_paths)
-    update_dataset_with_augms(augmented2, new_filename2, bbox_coords, ground_truth_masks, image_paths)
-    update_dataset_with_augms(augmented3, new_filename3, bbox_coords, ground_truth_masks, image_paths)
+    # update_dataset_with_augms(augmented1, new_filename1, bbox_coords, ground_truth_masks, image_paths)
+    # # update_dataset_with_augms(augmented2, new_filename2, bbox_coords, ground_truth_masks, image_paths)
+    # update_dataset_with_augms(augmented3, new_filename3, bbox_coords, ground_truth_masks, image_paths)
 
 
-# In[8]:
+# In[ ]:
 
 
 len(image_paths)
 
 
-# In[9]:
+# In[ ]:
 
 
-augmented3['image'].shape, len(augmented3['bboxes']), len(augmented3['masks']) 
+# augmented3['image'].shape, len(augmented3['bboxes']), len(augmented3['masks']) 
 
 
-# In[10]:
+# In[ ]:
 
 
 from PIL import Image
@@ -227,13 +242,13 @@ means = np.array(means)
 stds = np.array(stds)
 
 
-# In[11]:
+# In[ ]:
 
 
 np.mean(means), np.mean(stds) 
 
 
-# In[12]:
+# In[ ]:
 
 
 np.std(means), np.std(stds)
@@ -241,7 +256,7 @@ np.std(means), np.std(stds)
 
 # ### Dataset split
 
-# In[13]:
+# In[ ]:
 
 
 import json 
@@ -280,52 +295,32 @@ test_gt_masks, test_bboxes = create_dataset(test_image_paths, ground_truth_masks
 val_gt_masks, val_bboxes = create_dataset(val_image_paths, ground_truth_masks, bbox_coords)
 
 
-# del ground_truth_masks, bbox_coords 
+del ground_truth_masks, bbox_coords 
 
 
-# In[14]:
+# In[ ]:
 
 
 len(training_image_paths), len(test_image_paths), len(val_image_paths)
 
 
-# In[15]:
+# In[ ]:
 
 
-def show_mask(mask, ax, random_color=False):
-    if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-    else:
-        color = np.array([30/255, 144/255, 255/255, 0.6])
-    h, w = mask.shape[-2:]
-    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image)
-
-def show_masks(masks, ax, random_color=False):
-    for mask in masks:
-        if random_color:
-            color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-        else:
-            color = np.array([30/255, 144/255, 255/255, 0.6])
-        h, w = mask.shape[-2:]
-        mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-        ax.imshow(mask_image)
-
-def show_box(box, ax):
-    x0, y0 = box[0], box[1]
-    w, h = box[2] - box[0], box[3] - box[1]
-    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='orange', facecolor=(0,0,0,0), lw=2))    
+image_paths[0]
 
 
-# In[16]:
+# In[ ]:
 
 
-image_id2 = 'S0801800201_L_png.rf.09fdc614f5a495604d5996cca00cafe6_augm3.jpg'
+image_id2 = image_paths[0].split('/')[-1]
 image_masks_ids = [key for key in train_gt_masks.keys() if key.startswith(image_id2)]
+image_ = cv2.imread(image_paths[0])
+image_ = cv2.cvtColor(image_, cv2.COLOR_BGR2RGB)
 plt.figure(figsize=(5,5))
 plt.imshow(image_)
 for name in image_masks_ids:
-        show_box(bbox_coords[name], plt.gca())
+        show_box(train_bboxes[name], plt.gca())
         show_mask(train_gt_masks[name], plt.gca())
 plt.axis('off')
 plt.show()
@@ -333,18 +328,18 @@ plt.show()
 
 # ## 🚀 Prepare Mobile SAM Fine Tuning
 
-# In[17]:
+# In[ ]:
 
 
 import sys
 import PIL
 from PIL import Image
 
-sys.path.append('/workspace/raid/OM_DeepLearning/XMM_OM_code/MobileSAM/')
+sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/')
 import ft_mobile_sam
 from ft_mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
-mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XMM_OM_code/MobileSAM/weights/mobile_sam.pt"
+mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/weights/mobile_sam.pt"
 device = "cuda:6" if torch.cuda.is_available() else "cpu"
 print("device:", device)
 
@@ -353,7 +348,7 @@ mobile_sam_model.to(device);
 mobile_sam_model.train();
 
 
-# In[18]:
+# In[ ]:
 
 
 if 1==1:
@@ -369,7 +364,8 @@ wandb.watch(mobile_sam_model, log='all', log_graph=True)
 
 # Convert the input images into a format SAM's internal functions expect.
 
-# In[19]:
+
+# In[ ]:
 
 
 # Preprocess the images
@@ -429,7 +425,7 @@ def transform_image(image, k):
         return transformed_data
 
 
-# In[20]:
+# In[ ]:
 
 
 from torch.utils.data import Dataset
@@ -450,6 +446,9 @@ class ImageDataset(Dataset):
         img_id = image_paths[idx].split("/")[-1]
         image = cv2.imread(image_paths[idx])
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB) 
+        # plt.imshow(image)
+        # plt.show()
+        # plt.close()
 
         return self.transform(image, img_id)
         
@@ -458,15 +457,15 @@ dataset = ImageDataset(training_image_paths, train_bboxes, train_gt_masks, trans
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 
-# In[21]:
+# In[ ]:
 
 
 torch.cuda.empty_cache() 
 
-print(torch.cuda.memory_summary(device=device, abbreviated=False))
+# print(torch.cuda.memory_summary(device=device, abbreviated=False))
 
 
-# In[22]:
+# In[ ]:
 
 
 import torch.nn.functional as F
@@ -508,7 +507,7 @@ def dice_loss(pred, target, negative_mask = None, area=None, smooth = 1):
     return loss.mean()
 
 
-# In[23]:
+# In[ ]:
 
 
 torch.cuda.empty_cache()
@@ -518,25 +517,28 @@ print(torch.cuda.memory_reserved()/(1024**2))
 
 # ## Print model weights before tuning
 
-# In[24]:
+# In[ ]:
 
 
-weights_before = {}
-for name, param in mobile_sam_model.state_dict().items():
-    weights_before[name] = param.clone()
+# weights_before = {}
+# for name, param in mobile_sam_model.state_dict().items():
+#     weights_before[name] = param.clone()
 
 
-# In[25]:
+# In[35]:
 
 
 for name, param in mobile_sam_model.named_parameters():
-    if "image_encoder" in name or "prompt_encoder" in name:
-        param.requires_grad = False
-    else:
+    if "mask_decoder" in name:
+    # layers_to_fine_tune = ['mask_decoder.output_hypernetworks_mlps','mask_decoder.iou_prediction_head', 'mask_decoder.output_upscaling', \
+    #                        'mask_decoder.mask_tokens', 'mask_decoder.iou_token']
+    # if any(s in name for s in layers_to_fine_tune): # or "image_encoder.patch_embed" in name:
         param.requires_grad = True
+    else:
+        param.requires_grad = False
 
 
-# In[26]:
+# In[36]:
 
 
 def check_requires_grad(model, show=True):
@@ -547,7 +549,7 @@ def check_requires_grad(model, show=True):
             print("❌ Param", name, " doesn't require grad.")
 
 
-# In[27]:
+# In[37]:
 
 
 print(f"🚀 The model has {sum(p.numel() for p in mobile_sam_model.parameters() if p.requires_grad)} trainable parameters.\n")
@@ -556,22 +558,13 @@ check_requires_grad(mobile_sam_model)
 
 # ## Run fine tuning
 
-# In[28]:
-
-
-# !pip install torchviz
-
-#to visualize the computational graph
-# from torchviz import make_dot
-
-
-# In[29]:
+# In[ ]:
 
 
 len(train_gt_masks.keys())
 
 
-# In[30]:
+# In[ ]:
 
 
 # **idea** can use mixed-precision training:
@@ -581,7 +574,7 @@ len(train_gt_masks.keys())
 # from torch.cuda.amp import autocast, GradScaler
 
 
-# In[31]:
+# In[ ]:
 
 
 def validate_model():
@@ -638,14 +631,31 @@ def validate_model():
             # plt.close()
     return np.mean(validation_loss)
 
+import predictor_utils
+reload(predictor_utils)
+from predictor_utils import *
 
-# In[32]:
+def validate_model_AMG():
+    validation_loss = []
+
+    for val_img_path in val_image_paths:
+        with torch.no_grad():
+    
+            annotated_img, loss = amg_predict(mobile_sam_model, SamAutomaticMaskGenerator, val_gt_masks, 'ft_MobileSAM', \
+                                              val_img_path, mask_on_negative=True, show_plot=False)
+            # print('validation loss =', loss)
+            validation_loss.append(loss)
+
+    return np.mean(validation_loss)
+
+
+# In[38]:
 
 
 def one_image_predict(image_masks):
     image_loss=0.0
     for k in image_masks:                
-                prompt_box = np.array(bbox_coords[k])
+                prompt_box = np.array(train_bboxes[k])
                 box = predictor.transform.apply_boxes(prompt_box, original_image_size)
                 box_torch = torch.as_tensor(box, dtype=torch.float, device=device)
                 box_torch = box_torch[None, :]
@@ -655,21 +665,32 @@ def one_image_predict(image_masks):
             
                 mask_copy = cv2.cvtColor(mask_copy, cv2.COLOR_GRAY2BGR)
                 mask_copy = mask_copy * 255
-                x_min, y_min, x_max, y_max = bbox_coords[k]
+                x_min, y_min, x_max, y_max = train_bboxes[k]
                 x_min, y_min, x_max, y_max = map(int, [x_min, y_min, x_max, y_max])
+        
+                # can apply coords from bboxes
+                point_coords = np.array([(train_bboxes[k][2]-train_bboxes[k][0])/2.0, (train_bboxes[k][3]-train_bboxes[k][1])/2.0])
+                point_labels = np.array([1])
+                point_coords = predictor.transform.apply_coords(point_coords, original_image_size)
+                coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=predictor.device).unsqueeze(0)
+                labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=predictor.device)
+                coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
+
                 # print(x_min, y_min, x_max, y_max)
                 # cv2.rectangle(mask_copy, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
                 # plt.imshow(mask_copy)
                 # plt.show()
+                # print(coords_torch.shape, labels_torch.shape)
 
                 sparse_embeddings, dense_embeddings = mobile_sam_model.prompt_encoder(
-                  points=None,
+                  points=(coords_torch, labels_torch),
                   boxes=box_torch,
                   masks=None,
                 )
                 # print(box_torch.shape, mask_input_torch.shape)
 
-                del box_torch, mask_input_torch
+                del box_torch, mask_input_torch, coords_torch, labels_torch
+                torch.cuda.empty_cache()
 
                 # print(image_embedding.shape, mobile_sam_model.prompt_encoder.get_dense_pe().shape, sparse_embeddings.shape, dense_embeddings.shape)
                 low_res_masks, iou_predictions = mobile_sam_model.mask_decoder(
@@ -703,7 +724,7 @@ def one_image_predict(image_masks):
     return image_loss
 
 
-# In[33]:
+# In[ ]:
 
 
 from statistics import mean
@@ -714,9 +735,10 @@ import matplotlib.patches as patches
 import copy
 import time
 
-num_epochs = 10
+num_epochs = 20
 losses = []
 valid_losses = []
+valid_bboxes_losses = []
 predictor = SamPredictor(mobile_sam_model)
 
 for epoch in range(num_epochs):
@@ -734,13 +756,13 @@ for epoch in range(num_epochs):
 			# print(inputs['image_id'][i])
 			# print(image_masks)
 			input_image = inputs['image'][i].to(device)
-			
+            
 			image = cv2.imread(input_dir+inputs['image_id'][i])
 			image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
+            
 			original_image_size = image.shape[:-1]
 			input_size = (1024, 1024)
-			# np_image = np.transpose(input_image[0].detach().cpu().numpy(), (1, 2, 0))
+			np_image = np.transpose(input_image[0].detach().cpu().numpy(), (1, 2, 0))
 			# print(np.min(np_image), np.max(np_image))
 			# plt.imshow(np_image, cmap='viridis')
 			# plt.title(f'{inputs["image_id"][i]}.png')
@@ -777,25 +799,36 @@ for epoch in range(num_epochs):
 	# validation loss
 	losses.append(np.mean(epoch_losses))
 	mobile_sam_model.eval();
-	valid_losses.append(validate_model())
+	# valid_losses.append(validate_model_AMG())
+	valid_bboxes_losses.append(validate_model())
 	mobile_sam_model.train();
 	torch.cuda.empty_cache()
 
 	wandb.log({'epoch training loss': np.mean(epoch_losses)})
-	wandb.log({'epoch validation loss': np.mean(valid_losses)})
-	print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}. Validation loss: {np.mean(valid_losses)} ')
+	wandb.log({'epoch validation loss': np.mean(valid_bboxes_losses)})
+	# print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}. Validation AMG loss: {np.mean(valid_losses)}. Validation bboxes loss: {np.mean(valid_bboxes_losses)} ')
+	print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}.Validation bboxes loss: {np.mean(valid_bboxes_losses)} ')
+	if epoch%5==0:
+		torch.save(mobile_sam_model.state_dict(), f'mobile_sam_model_checkpoint{epoch}.pth')
 
 torch.save(mobile_sam_model.state_dict(), 'mobile_sam_model_checkpoint.pth')
 
 print('Training losses:', losses)
-print('Val losses:', valid_losses)
+print('valid_bboxes_losses losses:', valid_bboxes_losses)
+# print('Val losses:', valid_losses)
 
-print()
 wandb.run.summary["batch_size"] = batch_size
 wandb.run.summary["num_epochs"] = num_epochs
 wandb.run.summary["learning rate"] = lr
 wandb.run.summary["used area for DICE loss"] = 'YES'
-run.finish()
+# run.finish()
+
+
+# In[ ]:
+
+
+print('valid_losses', valid_losses)
+print('valid_bboxes_losses', valid_bboxes_losses)
 
 
 # In[ ]:
@@ -807,25 +840,46 @@ torch.cuda.empty_cache()
 print(torch.cuda.memory_allocated()/(1024**2)) #MB
 print(torch.cuda.memory_reserved()/(1024**2))
 
+
 # In[ ]:
 
+
 plt.plot(list(range(len(losses))), losses, label='Training Loss')
-plt.plot(list(range(len(valid_losses))), valid_losses, label='Validation Loss')
+plt.plot(list(range(len(valid_bboxes_losses))), valid_bboxes_losses, label='Validation Loss')
 plt.title('Mean epoch loss \n mask with sigmoid')
 plt.xlabel('Epoch Number')
 plt.ylabel('Loss')
 plt.legend()
-plt.savefig('loss_mask_valid.png')
+plt.savefig('./plots/loss_mask_valid_points_prompt.png')
 plt.show()
 
 
 # In[ ]:
 
 
-plt.plot(list(range(len(losses))), losses)
-plt.title('Mean epoch loss \n mask with sigmoid')
-plt.xlabel('Epoch Number')
-plt.ylabel('Loss')
-plt.savefig('loss_mask_sigmoid_training.png')
-plt.show()
-plt.close()
+# plt.plot(list(range(len(losses))), losses)
+# plt.title('Mean epoch loss \n mask with sigmoid')
+# plt.xlabel('Epoch Number')
+# plt.ylabel('Loss')
+# plt.savefig('loss_mask_sigmoid_training.png')
+# plt.show()
+# plt.close()
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
