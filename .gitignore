@@ -22,3 +22,5 @@ multiple_models_inference.ipynb
 ft_MobileSAM_dataset_old.py
 ft_EVA.ipynb
 ft_Detectron2_Instance.ipynb
+ft_MobileSAM_dataset.ipynb
+ft_MobileSAM_and_classif.ipynb

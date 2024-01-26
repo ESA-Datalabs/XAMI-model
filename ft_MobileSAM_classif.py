@@ -525,7 +525,8 @@ extended_model
 # **AutomaticMixedPrecision**
 from torch.cuda.amp import GradScaler, autocast
 
-scaler = GradScaler()
+scaler = torch.cuda.amp.GradScaler()
+
 # %%
 len(train_gt_masks.keys())
 
@@ -633,7 +634,8 @@ def one_image_predict(image_masks):
     total_area = 0.0
     ce_loss = 0.0
     for k in image_masks:   
-        with profiler.profile(profile_memory=True, use_cuda=True, record_shapes=True) as prof:
+        # with profiler.profile(profile_memory=True, use_cuda=True, record_shapes=True) as prof:
+        if True:
 
                 # process bboxes
                 prompt_box = np.array(train_bboxes[k])
@@ -693,11 +695,10 @@ def one_image_predict(image_masks):
                 numpy_gt_binary_mask = gt_binary_mask.contiguous().detach().cpu().numpy()
 
                 # CE loss over mask
-
                 flattened_mask = binary_mask.view(-1)
                 iou_predictions_flat = iou_predictions.view(-1)
                 combined_features = torch.cat((flattened_mask, iou_predictions_flat), dim=0)
-                print(len(combined_features))
+                # print(len(combined_features))
                 class_output = extended_model(binary_mask, iou_predictions).unsqueeze(0)
                 # print('class_output', class_output)
                 gt_class = torch.as_tensor([classes[k]], dtype=torch.long, device=device)
@@ -725,12 +726,11 @@ def one_image_predict(image_masks):
                 del gt_mask_resized, numpy_gt_binary_mask 
                 del low_res_masks, iou_predictions 
                 del downscaled_masks, gt_binary_mask, gt_class, class_output
-                print(f'one image{k}: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
         
                 torch.cuda.empty_cache()
-                print('one mask', k, 'done')
-                print(f'one image{k}: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
-        print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=20))
+                # print('one mask', k, 'done')
+                # print(f'one image{k}: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
+        # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=20))
 
 
     image_loss = torch.stack(image_loss)
@@ -820,11 +820,13 @@ for epoch in range(num_epochs):
         
         batch_loss /= batch_size
         optimizer.zero_grad()
-          
+
         # AMP
-        scaler.scale(batch_loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        # scaler.scale(batch_loss).backward()
+        batch_loss.backward()
+        # scaler.step(optimizer)
+        optimizer.step()
+        # scaler.update()
 
         epoch_losses.append(batch_loss.item())
         torch.cuda.empty_cache()
