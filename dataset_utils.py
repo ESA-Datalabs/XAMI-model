@@ -61,8 +61,10 @@ def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
     
     For each annotation, it keeps it only if its bounding box size is significant (h,w) > (5,5).
     """
-    result_masks, bbox_coords = {}, {}
+    result_masks, bbox_coords, result_class = {}, {}, {}
 	
+    class_categories = {data_in['categories'][a]['id']:data_in['categories'][a]['name'] for a in range(len(data_in['categories']))}
+
     if image_key is not None:
         image_id = None
         for img_id in range(len(data_in['images'])):
@@ -84,10 +86,10 @@ def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
                 bbox_coords[f'{image_key}_mask{i}'] = [xyhw[0], xyhw[1], xyhw[2]+ xyhw[0], xyhw[3]+xyhw[1]]
         return result_masks, bbox_coords
 
-
     # for all images in set
     for im in data_in['images']:        
         masks = [data_in['annotations'][a] for a in range(len(data_in['annotations'])) if data_in['annotations'][a]['image_id'] == im['id']]
+        classes = [data_in['annotations'][a]['category_id'] for a in range(len(data_in['annotations'])) if data_in['annotations'][a]['image_id'] == im['id']]
         for i in range(len(masks)):
             xyhw = masks[i]['bbox']
             if xyhw[2]>5 or xyhw[3]>5: # ignore masks with an (h,w) < (5,5)
@@ -100,8 +102,9 @@ def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
                 mask = create_mask(points, (h_img, w_img)) # Roboflow segmentations are polygon points, and are be converted to masks
                 result_masks[f'{im["file_name"]}_mask{i}'] = mask
                 bbox_coords[f'{im["file_name"]}_mask{i}'] = [xyhw[0], xyhw[1], xyhw[2]+ xyhw[0], xyhw[3]+xyhw[1]]
+                result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
 	
-    return result_masks, bbox_coords
+    return result_masks, bbox_coords, result_class, class_categories
 
 def create_mask(points, image_size):
     polygon = [(points[i], points[i+1]) for i in range(0, len(points), 2)]
