@@ -3,9 +3,15 @@
 
 # %%
 import os
+import torch
+print(torch.__version__)
+print(torch.__file__)
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = "1"
-import torch.autograd.profiler as profiler
+
+from torch.profiler import profile, record_function, ProfilerActivity
+
+# import torch.autograd.profiler as profiler
 
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -633,9 +639,11 @@ def one_image_predict(image_masks):
     mask_result = []
     total_area = 0.0
     ce_loss = 0.0
-    for k in image_masks:   
+    for k in image_masks: 
+        with profile(activities=[ProfilerActivity.CUDA], record_shapes=True) as prof:
+          
         # with profiler.profile(profile_memory=True, use_cuda=True, record_shapes=True) as prof:
-        if True:
+        # if True:
 
                 # process bboxes
                 prompt_box = np.array(train_bboxes[k])
@@ -730,7 +738,7 @@ def one_image_predict(image_masks):
                 torch.cuda.empty_cache()
                 # print('one mask', k, 'done')
                 # print(f'one image{k}: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
-        # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=20))
+        print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=10))
 
 
     image_loss = torch.stack(image_loss)
@@ -766,7 +774,7 @@ import matplotlib.patches as patches
 import copy
 import time
 
-num_epochs = 2
+num_epochs = 20
 losses = []
 valid_losses = []
 valid_bboxes_losses = []
@@ -780,7 +788,7 @@ for epoch in range(num_epochs):
         batch_loss = 0.0
         batch_size = min(len(inputs['image']), batch_size) # at the end, there's less than batch_size imgs in a batch (sometimes)
 
-        with autocast():
+        with autocast(): 
             for i in range(batch_size): 
                     image_loss[i]=0.0
                     
@@ -848,7 +856,7 @@ for epoch in range(num_epochs):
     print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}.Validation bboxes loss: {np.mean(valid_bboxes_losses)} ')
     # print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}.')
 
-# torch.save(mobile_sam_model.state_dict(), 'mobile_sam_model_checkpoint.pth')
+torch.save(mobile_sam_model.state_dict(), 'mobile_sam_model_checkpoint.pth')
 
 print('Training losses:', losses)
 print('valid_bboxes_losses losses:', valid_bboxes_losses)
