@@ -27,6 +27,8 @@ import numpy.ma as ma
 import json
 np.set_printoptions(precision=15)
 
+torch.cuda.set_device(7)  # specifically set a GPU (this solves the CUDA out of memeory error when someone else allocates memory with "cuda" instead of a specific "cuda:idx", even when I alocate with "cuda:idx")
+
 # Ensure deterministic behavior (cannot control everything though)
 torch.backends.cudnn.deterministic = True
 random.seed(42)
@@ -424,7 +426,7 @@ import matplotlib.pyplot as plt
 import torch.nn as nn
 
 lr=3e-4
-wd=5e-4
+wd=0.0
 optimizer = torch.optim.AdamW(mobile_sam_model.mask_decoder.parameters(), lr=lr, weight_decay=wd)
 
 ce_loss_fn = nn.CrossEntropyLoss()
@@ -466,10 +468,8 @@ print(torch.cuda.memory_reserved()/(1024**2))
 # %%
 for name, param in mobile_sam_model.named_parameters():
     # if "mask_decoder" in name:
-    if False:
-    # layers_to_fine_tune = ['mask_decoder.output_hypernetworks_mlps','mask_decoder.iou_prediction_head', 'mask_decoder.output_upscaling', \
-    #                        'mask_decoder.mask_tokens', 'mask_decoder.iou_token']
-    # if any(s in name for s in layers_to_fine_tune): # or "image_encoder.patch_embed" in name:
+    layers_to_fine_tune = ['mask_decoder.output_hypernetworks_mlps','mask_decoder.iou_prediction_head', 'mask_decoder.output_upscaling', 'mask_decoder.mask_tokens', 'mask_decoder.iou_token']
+    if any(s in name for s in layers_to_fine_tune): # or "image_encoder.patch_embed" in name:
         param.requires_grad = True
     else:
         param.requires_grad = False
@@ -500,7 +500,7 @@ class ExtendedSAMModel(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(input_size, 512), # TODO: use nn.AdaptiveAvgPool2d layer, as it is more robust to image size changes
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.1),
             nn.Linear(512, num_classes)
         )
 
@@ -517,7 +517,7 @@ class ExtendedSAMModel(nn.Module):
 def combined_loss(pred_masks, true_masks, pred_logits, true_labels, dice_loss_fn, ce_loss_fn):
     dice_loss = dice_loss_fn(pred_masks, true_masks)
     ce_loss = ce_loss_fn(pred_logits, true_labels)
-    total_loss = dice_loss + ce_loss  # You can also weigh these losses differently
+    total_loss = dice_loss + ce_loss  
     return total_loss
 
 num_classes = len(class_categories.values())
@@ -535,13 +535,6 @@ scaler = torch.cuda.amp.GradScaler()
 
 # %%
 len(train_gt_masks.keys())
-
-# %%
-# **idea** can use mixed-precision training:
-# This is a technique that involves using a mix of float16 and float32 tensors 
-# to make the model use less memory and run faster. 
-# PyTorch provides the torch.cuda.amp module for automatic mixed-precision training.
-# from torch.cuda.amp import autocast, GradScaler
 
 # %%
 def validate_model():
@@ -640,16 +633,19 @@ def one_image_predict(image_masks):
     total_area = 0.0
     ce_loss = 0.0
     for k in image_masks: 
-        with profile(activities=[ProfilerActivity.CUDA], record_shapes=True) as prof:
-          
-        # with profiler.profile(profile_memory=True, use_cuda=True, record_shapes=True) as prof:
+        # with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof: # needs cudnn 
+        # with profiler.profile(profile_memory=True, use_cuda=True, record_shapes=True) as prof: # this needs pytorch build from Git for TORCH_USE_CUDA_DSA=1
+        # with torch.autograd.profiler.profile() as prof:
         # if True:
+                with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof:
+                # if True:
+                    # process bboxes
+                    prompt_box = np.array(train_bboxes[k])
+                    box = predictor.transform.apply_boxes(prompt_box, original_image_size)
+                    box_torch = torch.as_tensor(box, dtype=torch.float, device=device)
+                    box_torch = box_torch[None, :]
 
-                # process bboxes
-                prompt_box = np.array(train_bboxes[k])
-                box = predictor.transform.apply_boxes(prompt_box, original_image_size)
-                box_torch = torch.as_tensor(box, dtype=torch.float, device=device)
-                box_torch = box_torch[None, :]
+                print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5))
 
                 # process masks
                 mask_input_torch = torch.as_tensor(train_gt_masks[k], dtype=torch.float, device=predictor.device).unsqueeze(0).unsqueeze(0)
@@ -674,24 +670,31 @@ def one_image_predict(image_masks):
                 # plt.plot((train_bboxes[k][2]+train_bboxes[k][0])/2.0, (train_bboxes[k][3]+train_bboxes[k][1])/2.0, 'ro')
                 # plt.show()
 
-                sparse_embeddings, dense_embeddings = mobile_sam_model.prompt_encoder(
-                  points=(coords_torch, labels_torch),
-                  boxes=box_torch, #None,
-                  masks=None,
-                )
+                with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof:
+                # if True:
+                    sparse_embeddings, dense_embeddings = mobile_sam_model.prompt_encoder(
+                    points=(coords_torch, labels_torch),
+                    boxes=box_torch, #None,
+                    masks=None,
+                    )
+                print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5))
+
                 # print(box_torch.shape, mask_input_torch.shape)
 
                 del box_torch, mask_input_torch, coords_torch, labels_torch
                 torch.cuda.empty_cache()
 
                 # print(image_embedding.shape, mobile_sam_model.prompt_encoder.get_dense_pe().shape, sparse_embeddings.shape, dense_embeddings.shape)
-                low_res_masks, iou_predictions = mobile_sam_model.mask_decoder(
-                image_embeddings=image_embedding,
-                image_pe=mobile_sam_model.prompt_encoder.get_dense_pe(),
-                sparse_prompt_embeddings=sparse_embeddings,
-                dense_prompt_embeddings=dense_embeddings,
-                multimask_output=True, # this works better for ambiguous prompts (single points)
-                )
+                with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof:
+                # if True: 
+                    low_res_masks, iou_predictions = mobile_sam_model.mask_decoder(
+                    image_embeddings=image_embedding,
+                    image_pe=mobile_sam_model.prompt_encoder.get_dense_pe(),
+                    sparse_prompt_embeddings=sparse_embeddings,
+                    dense_prompt_embeddings=dense_embeddings,
+                    multimask_output=True, # this works better for ambiguous prompts (single points)
+                    )
+                print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5))
         
                 # print(low_res_masks.shape)
 
@@ -714,6 +717,7 @@ def one_image_predict(image_masks):
                 # max_index = torch.argmax(class_output)
                 # print('class_output shape:', class_output, 'gt class', gt_class)
                 ce_loss += ce_loss_fn(class_output, gt_class)
+
                 # print('CE loss:', ce_loss_fn(class_output, gt_class))
 
                 # print(iou_predictions)
@@ -737,9 +741,10 @@ def one_image_predict(image_masks):
         
                 torch.cuda.empty_cache()
                 # print('one mask', k, 'done')
-                # print(f'one image{k}: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
-        print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=10))
-
+                # # print(f'one image{k}: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
+                import sys
+                sys.exit()
+        # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5))
 
     image_loss = torch.stack(image_loss)
     image_loss = torch.sum(image_loss)
@@ -774,7 +779,7 @@ import matplotlib.patches as patches
 import copy
 import time
 
-num_epochs = 20
+num_epochs = 1
 losses = []
 valid_losses = []
 valid_bboxes_losses = []
@@ -807,7 +812,12 @@ for epoch in range(num_epochs):
                     # plt.show()
 
                     # IMAGE ENCODER
-                    image_embedding = mobile_sam_model.image_encoder(input_image)
+                    with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof:
+
+                       image_embedding = mobile_sam_model.image_encoder(input_image)
+                    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5, max_src_column_width=300))
+                    # prof.export_chrome_trace("trace.json")
+
                     del input_image
 
                     # negative_mask has the size of the image
@@ -840,6 +850,7 @@ for epoch in range(num_epochs):
         torch.cuda.empty_cache()
         del batch_loss, image_loss
         # print('after emptying cache: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
+        print(epoch_losses)
 
     # validation loss
     losses.append(np.mean(epoch_losses))
@@ -855,8 +866,11 @@ for epoch in range(num_epochs):
     # print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}. Validation AMG loss: {np.mean(valid_losses)}. Validation bboxes loss: {np.mean(valid_bboxes_losses)} ')
     print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}.Validation bboxes loss: {np.mean(valid_bboxes_losses)} ')
     # print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}.')
+    if  epoch%8 == 0:
+        torch.save(mobile_sam_model.state_dict(), f'mobile_sam_model_checkpoint{epoch}.pth')  
 
 torch.save(mobile_sam_model.state_dict(), 'mobile_sam_model_checkpoint.pth')
+torch.save(extended_model.state_dict(), 'classif_checkpoint.pth')
 
 print('Training losses:', losses)
 print('valid_bboxes_losses losses:', valid_bboxes_losses)
