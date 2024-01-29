@@ -113,67 +113,100 @@ def create_mask(points, image_size):
     cv2.fillPoly(mask, [np.array(polygon, dtype=np.int32)], 1)
     return mask
 
+def align_masks_and_bboxes(augmented_set):
+    '''
+    Sometimes, the masks and bboxes returned by the Augmentation process do not have the same size, and (thus) they are not aligned by index. 
+    This function will keep the non-empty masks and generate another bboxes given those masks.
+    '''
+    
+    bboxes_augm = []
+    masks_augm = []
+    
+    for mask_i in augmented_set['masks']:
+        if np.any(mask_i):
+            bbox = cv2.boundingRect(mask_i)
+            bboxes_augm.append(bbox)
+            masks_augm.append(mask_i)
+    
+    augmented_set['masks'] = masks_augm
+    augmented_set['bboxes'] = bboxes_augm
+    # augmented_set['category_id'] = [1] * len(masks_augm)
+    return augmented_set
+
 def augment_and_show(aug, image, masks=None, bboxes=[], categories=[], category_id_to_name=[], filename=None, 
-                     font_scale_orig=0.35, font_scale_aug=0.35, show_title=True, **kwargs):
+                     font_scale_orig=0.35, font_scale_aug=0.35, show_=True, **kwargs):
 
     augmented = aug(image=image, masks=masks, bboxes=bboxes, category_id=categories)
-    # image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2RGB)
+    # augmented = align_masks_and_bboxes(augmented)
+    min_len = min(len(augmented['masks']), len(augmented['bboxes']))
+    # print('min_len:', min_len)
+    augmented['masks'] = augmented['masks'][:min_len]
+    augmented['bboxes'] = augmented['bboxes'][:min_len]
 
-    # image_aug = cv2.cvtColor(augmented['image'].copy(), cv2.COLOR_BGR2RGB)
+    # print(len(augmented['masks']), len(augmented['bboxes']), len(augmented['category_id']))
 
-    # for bbox in bboxes:
-    #     visualize_bbox(image, bbox, BOX_COLOR, **kwargs)
+    if show_:
+            
+        image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2RGB)
 
-    # for bbox in augmented['bboxes']:
-    #     visualize_bbox(image_aug, bbox, TEXT_COLOR, **kwargs)
+        image_aug = cv2.cvtColor(augmented['image'].copy(), cv2.COLOR_BGR2RGB)
 
-    # if show_title:
-    #     for bbox,cat_id in zip(bboxes, categories):
-    #         visualize_titles(image, bbox, category_id_to_name[cat_id], font_scale=font_scale_orig, **kwargs)
-    #     for bbox,cat_id in zip(augmented['bboxes'], augmented['category_id']):
-    #         visualize_titles(image_aug, bbox, category_id_to_name[cat_id], font_scale=font_scale_aug, **kwargs)
+        for bbox in bboxes:
+            visualize_bbox(image, bbox, BOX_COLOR, **kwargs)
 
-    # if masks is None:
-    #     f, ax = plt.subplots(1, 2, figsize=(12, 6))
-        
-    #     ax[0].imshow(image)
-    #     ax[0].set_title('Original image')
-    #     ax[1].imshow(image_aug)
-    #     ax[1].set_title('Augmented image')
-    # else:
-    #     f, ax = plt.subplots(2, 2, figsize=(16, 16))
+        for bbox in augmented['bboxes']:
+            visualize_bbox(image_aug, bbox, TEXT_COLOR, **kwargs)
 
-    #     ax[0, 0].imshow(image)
-    #     ax[0, 0].set_title('Original image')
-    #     ax[0, 1].imshow(image_aug)
-    #     ax[0, 1].set_title('Augmented image')
+        for bbox,cat_id in zip(bboxes, categories):
+            visualize_titles(image, bbox, category_id_to_name[cat_id], font_scale=font_scale_orig, **kwargs)
+        for bbox,cat_id in zip(augmented['bboxes'], augmented['category_id']):
+            visualize_titles(image_aug, bbox, category_id_to_name[cat_id], font_scale=font_scale_aug, **kwargs)
 
-    #     height, width = masks[0].shape
-    #     black_image = np.zeros((height, width, 3), dtype=np.uint8)
+        if masks is None:
+            f, ax = plt.subplots(1, 2, figsize=(12, 6))
+            
+            ax[0].imshow(image)
+            ax[0].set_title('Original image')
+            ax[1].imshow(image_aug)
+            ax[1].set_title('Augmented image')
+        else:
+            f, ax = plt.subplots(2, 2, figsize=(16, 16))
 
-    #     for mask in masks:
-    #         colored_mask = np.zeros_like(black_image)  
-    #         colored_mask[mask == 1] = random_color() 
-    #         black_image = cv2.addWeighted(black_image, 1, colored_mask, 0.5, 0)
+            ax[0, 0].imshow(image)
+            ax[0, 0].set_title('Original image')
+            ax[0, 1].imshow(image_aug)
+            ax[0, 1].set_title('Augmented image')
 
-    #     ax[1, 0].imshow(black_image, interpolation='nearest')
-    #     ax[1, 0].set_title('Original masks')
-        
-    #     black_image = np.zeros((height, width, 3), dtype=np.uint8)
-    #     for mask in augmented['masks']:
-    #         colored_mask = np.zeros_like(black_image)  
-    #         colored_mask[mask == 1] = random_color()  
-    #         black_image = cv2.addWeighted(black_image, 1, colored_mask, 0.5, 0)
-    #     ax[1, 1].imshow(black_image, interpolation='nearest')
-    #     ax[1, 1].set_title('Augmented masks')
-    # f.tight_layout()
+            height, width = masks[0].shape
+            black_image = np.zeros((height, width, 3), dtype=np.uint8)
 
-    # if filename is not None:
-    #     f.savefig(filename)
-        
+            for mask in masks:
+                colored_mask = np.zeros_like(black_image)  
+                colored_mask[mask == 1] = random_color() 
+                black_image = cv2.addWeighted(black_image, 1, colored_mask, 0.5, 0)
+
+            ax[1, 0].imshow(black_image, interpolation='nearest')
+            ax[1, 0].set_title('Original masks')
+            
+            black_image = np.zeros((height, width, 3), dtype=np.uint8)
+            for mask in augmented['masks']:
+                colored_mask = np.zeros_like(black_image)  
+                colored_mask[mask == 1] = random_color()  
+                black_image = cv2.addWeighted(black_image, 1, colored_mask, 0.5, 0)
+            ax[1, 1].imshow(black_image, interpolation='nearest')
+            ax[1, 1].set_title('Augmented masks')
+        f.tight_layout()
+
+        if filename is not None:
+            f.savefig(filename)
+            
     return augmented
 
-def update_dataset_with_augms(augmented_set: Dict[str, Any], new_filename: str, bbox_coords: Dict[str, Any], ground_truth_masks: Dict[str, Any], image_paths: List[str]):
+def update_dataset_with_augms(augmented_set: Dict[str, Any], 
+                              new_filename: str, bbox_coords: Dict[str, Any], 
+                              ground_truth_masks: Dict[str, Any], 
+                              image_paths: List[str],
+                              classes: Dict[str, Any]):
     """
     Updates the dataset with augmented images, masks, and bounding box coordinates.
 
@@ -193,24 +226,29 @@ def update_dataset_with_augms(augmented_set: Dict[str, Any], new_filename: str, 
     # if len(augmented_set['masks']) != len(augmented_set['bboxes']):
         # print(f"❗The number of masks is different than the number of bboxes. #masks = {len(augmented_set['masks'])}, #bboxes: {len(augmented_set['bboxes'])}")
 
-    augmented_set['masks'] = [mask for mask in augmented_set['masks'] if np.any(mask)]
+    # augmented_set['masks'] = [mask for mask in augmented_set['masks'] if np.any(mask)]
 
-    # Reduce masks/bboxes to use the same length
-    min_len = min(len(augmented_set['masks']), len(augmented_set['bboxes']))
-    augmented_set['masks'] = augmented_set['masks'][:min_len]
-    augmented_set['bboxes'] = augmented_set['bboxes'][:min_len]
+    # Reduce masks/bboxes to use the same length (this is not necessary if bboxes are generated from masks)
 
     # Save the new image
     cv2.imwrite(new_filename, augmented_set['image'])
 
     # Add image path to the dataset
     image_paths.append(new_filename)
+    # print('nb masks:', len(augmented_set['masks']), 'cats:', len(augmented_set['category_id']))
 
     # Add image masks and bboxes to the dataset
-    for mask_i in range(len(augmented_set['masks'])):
-        hywh_bbox = np.array([augmented_set['bboxes'][mask_i][0], augmented_set['bboxes'][mask_i][1],
+    for mask_i in range(len(augmented_set['bboxes'])):
+        xyxy_bbox = np.array([augmented_set['bboxes'][mask_i][0], augmented_set['bboxes'][mask_i][1],
                               augmented_set['bboxes'][mask_i][2] + augmented_set['bboxes'][mask_i][0],
                               augmented_set['bboxes'][mask_i][3] + augmented_set['bboxes'][mask_i][1]])
 
-        bbox_coords[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = hywh_bbox
+        bbox_coords[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = xyxy_bbox
         ground_truth_masks[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = augmented_set['masks'][mask_i]
+        classes[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = augmented_set['category_id'][mask_i]
+
+        if not np.any(augmented_set['masks'][mask_i]):
+            print(f'{new_filename.split("/")[-1]}_mask{mask_i}', 'is empty')
+            print('mask_i:', mask_i, 'mask:', augmented_set['masks'][mask_i].shape, 'bbox:', xyxy_bbox)
+            import sys
+            sys.exit()
