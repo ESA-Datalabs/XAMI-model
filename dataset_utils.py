@@ -46,6 +46,83 @@ def plot_bboxes_and_masks(image, bboxes, masks):
         plt.show()
         plt.close()
 
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def visualize_masks(image_path, image, masks, labels, colors, alpha=0.4):
+    """
+    Visualize masks on an image with contours and dynamically sized text labels with a background box.
+
+    Parameters:
+    - image_path: The path to the image file.
+    - image: The original image (numpy array).
+    - masks: A list of masks (numpy arrays), one for each label.
+    - labels: A list of labels corresponding to each mask.
+    - colors: A list of colors corresponding to each label.
+    - alpha: Transparency of masks.
+    """
+    # Ensure the image is in RGB format
+    if len(image.shape) == 2 or image.shape[2] == 1:
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+    elif image.shape[2] == 4:
+        image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+
+    # Create a color overlay
+    overlay = image.copy()
+    for mask, label in zip(masks, labels):
+        color = colors[label]
+        # Apply mask to the overlay
+        overlay[mask == 1] = [color[0], color[1], color[2]]
+
+        # Find contours
+        contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Draw contours on the original image for better contrast
+        contour_color = [c // 4 for c in color]  # Darker shade of the mask color
+        cv2.drawContours(image, contours, -1, contour_color, 2)  # Adjust thickness as needed
+
+        # Optionally, add label text near the contour
+        if contours:
+            # Calculate the area of the mask to determine the font size
+            area = np.sum(mask)
+            font_scale = 0.7 + (area / (image.shape[0] * image.shape[1])) * 2  # Adjust scaling factor as needed
+            
+            # Cap the font_scale to a maximum value if necessary
+            font_scale = min(font_scale, 1.0)
+            
+            # Choose a font
+            font = cv2.FONT_HERSHEY_COMPLEX_SMALL
+            
+            # Get the size of the text box
+            ((text_width, text_height), _) = cv2.getTextSize(label, font, font_scale, 1)
+            
+            # Calculate the box coordinates
+            text_x = contours[0][0][0][0]
+            text_y = contours[0][0][0][1] - 7  # Shift text up by 7 pixels
+            box_coords = ((text_x, text_y + 7), (text_x + text_width, text_y - text_height - 7))
+            
+            # Draw the text background box
+            image = cv2.rectangle(image, box_coords[0], box_coords[1], color, cv2.FILLED)
+            
+            # Ensure text is within image bounds
+            text_x = max(0, min(text_x, image.shape[1] - text_width))
+            text_y = max(0, min(text_y, image.shape[0]))
+            
+            # Place text on the image
+            cv2.putText(image, label, (text_x, text_y), font, font_scale, [0, 0, 0], 1)  # Black text
+
+    # Blend the original image and the overlay
+    cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+
+    # Display the image
+    plt.imshow(image)
+    plt.title(f'Predicted classes \n{image_path.split(".")[0]}')
+    plt.axis('off')
+    plt.show()
+    plt.imsave('./plots/'+image_path, image)
+    plt.close()
+
 def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
     """
     Extracts masks and bounding box coordinates from a JSON object containing image annotations.

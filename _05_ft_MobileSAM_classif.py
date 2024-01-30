@@ -4,15 +4,6 @@
 # %%
 import os
 import torch
-print(torch.__version__)
-print(torch.__file__)
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = "1"
-
-from torch.profiler import profile, record_function, ProfilerActivity
-
-# import torch.autograd.profiler as profiler
-
 from pathlib import Path
 import matplotlib.pyplot as plt
 import cv2
@@ -22,7 +13,6 @@ import os
 import numpy as np
 import random
 from PIL import Image
-import matplotlib.colors as mcolors
 import numpy.ma as ma
 import json
 from statistics import mean
@@ -30,10 +20,16 @@ from tqdm import tqdm
 from torch.nn.functional import threshold, normalize
 from matplotlib.colors import ListedColormap
 import matplotlib.patches as patches
-import copy
-import time
 from torch.cuda.amp import GradScaler, autocast
 
+# print(torch.__version__)
+# print(torch.__file__)
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = "1"
+
+from torch.profiler import profile, record_function, ProfilerActivity
+
+# import torch.autograd.profiler as profiler
 np.set_printoptions(precision=15)
 
 torch.cuda.set_device(7)  # specifically set a GPU (this solves the CUDA out of memeory error when someone else allocates memory with "cuda" instead of a specific "cuda:idx", even when I alocate with "cuda:idx")
@@ -269,7 +265,7 @@ for name in image_masks_ids:
         show_mask(train_gt_masks[name], plt.gca())
 plt.axis('off')
 plt.show()
-
+plt.close()
 # %% [markdown]
 # ## 🚀 Prepare Mobile SAM Fine Tuning
 
@@ -291,7 +287,7 @@ mobile_sam_model.to(device);
 mobile_sam_model.eval(); #!!!
 
 # %%
-use_wandb = False
+use_wandb = True
 
 if use_wandb:
     from datetime import datetime
@@ -299,10 +295,7 @@ if use_wandb:
     # !wandb login --relogin
     import wandb
     wandb.login()
-    run = wandb.init(project="OM_AI_v1", name=f"ft_MobileSAM {datetime.now()}")
-
-    # wandb.watch(mobile_sam_model, log='all', log_graph=True)
-
+    run = wandb.init(project="OM_AI_v1", name=f"classify {datetime.now()}")
 # %% [markdown]
 # # Convert the input images into a format SAM's internal functions expect.
 
@@ -482,8 +475,10 @@ class ExtendedSAMModel(nn.Module):
         return class_logits
 
 num_classes = len(class_categories.values())
-extended_model = ExtendedSAMModel(512*512*3, num_classes).to(device) # TODO: this hard-coded value only works for 512x512 masks and 3 IoUs per mask !!!
-extended_model
+extended_model = ExtendedSAMModel(512*512*3, num_classes).to(device) # TODO: chaneg this hard-coded value to work on other inputs
+
+if use_wandb:
+    wandb.watch(extended_model, log='all', log_graph=True)
 # %% [markdown]
 # ## Run fine tuning
 
@@ -496,7 +491,6 @@ import torch.nn.functional as F
 lr=3e-4
 wd=0.01
 optimizer = torch.optim.AdamW(extended_model.parameters(), lr=lr, weight_decay=wd)
-ce_loss_fn = nn.CrossEntropyLoss()
 scheduler = CosineAnnealingLR(optimizer, T_max=30, eta_min=1e-8) # not very helpful
 
 num_epochs= 10
@@ -519,7 +513,7 @@ def topk_accuracy(outputs, labels, topk=(1,)):
         return res
 
 # %%
-def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, class_categories, device):
+def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, class_categories, device, plot_preds=False):
     image_loss = {}
     batch_loss = 0.0
     batch_size = len(inputs['image'])
@@ -552,8 +546,19 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
                     mask_input_torch = mask_input_torch / mask_input_torch.max()
                 
                     outputs = model(mask_input_torch * input_image).unsqueeze(0) # also take the image pixels into account
-                    loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device))
+
+                    # compute weighted sum to balance the classes
+                    class_weights = {}
+                    for class_id in class_categories.keys():
+                        sum_app = sum([1.0 for k, v in classes.items() if v == class_id])
+                        if sum_app == 0:
+                            sum_app = 1e6
+                        class_weights[class_id] = 1.0/sum_app
+                
+                    weights_tensor = torch.tensor(list(class_weights.values()), dtype=torch.float).to(device)
+                    loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device), weight=weights_tensor)
                     image_loss[i] += loss
+                    torch.cuda.empty_cache()
 
                     # print((mask_input_torch*input_image).dtype, (mask_input_torch*input_image).min(), (mask_input_torch*input_image).max())
                     # plt.imshow((mask_input_torch*input_image).detach().cpu().numpy())
@@ -563,22 +568,17 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
 
                     top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5))
 
-                    if top1_acc>1:
-                        print("top1_acc:", top1_acc)
-                        import sys
-                        sys.exit()
-
-                    if top5_acc>1:
-                        print("top5_acc:", top5_acc)
-                        import sys
-                        sys.exit()
-
                     if isinstance(top1_acc, torch.Tensor) and isinstance(top5_acc, torch.Tensor):
                         top1_img_acc += top1_acc.item()
                         top5_img_acc += top5_acc.item()
                     else:
                         top1_img_acc += top1_acc
                         top5_img_acc += top5_acc
+
+                if plot_preds:
+                    masks = [gt_masks[mask_id] for mask_id in image_masks]
+                    labels = [class_categories[classes[mask_id]] for mask_id in image_masks]
+                    visualize_masks(inputs['image_id'][i], image, masks, labels, colors)
 
                 top1_batch_acc += (top1_img_acc / len(image_masks))
                 top5_batch_acc += (top5_img_acc / len(image_masks)) 
@@ -597,25 +597,33 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
 
     return batch_loss.item(), top1_batch_acc, top5_batch_acc
 # %%
+
+
 dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
 dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
 
-epoch_train_losses = []
-epoch_val_losses = []
-top1_train_accuracy = []
-top5_train_accuracy = []
-top1_val_accuracy = []
-top5_val_accuracy = []
+epoch_train_losses, epoch_val_losses = [], []
+top1_train_accs, top5_train_accs = [], []
+top1_val_accs, top5_val_accs = [], []
 
 # Training and Validation Loops
 for epoch in range(num_epochs):
     extended_model.train()
+
+    train_losses, val_losses = [], []
+    top1_train_accuracy, top5_train_accuracy = [], []
+    top1_val_accuracy, top5_val_accuracy = [], []
+
     for inputs in tqdm(dataloader):
-        train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, extended_model, optimizer, True, train_gt_masks, classes, class_categories, device)
+        train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, extended_model, optimizer, True, train_gt_masks, classes, class_categories, device, plot_preds=False)
     
-        epoch_train_losses.append(train_loss)
+        train_losses.append(train_loss)
         top1_train_accuracy.append(train_top1_acc)
         top5_train_accuracy.append(train_top5_acc)
+
+    epoch_train_losses.append(np.mean(train_losses))
+    top1_train_accs.append(np.mean(top1_train_accuracy))
+    top5_train_accs.append(np.mean(top5_train_accuracy))
 
     if use_wandb:
         wandb.log({'epoch classif train loss': np.mean(epoch_train_losses)})
@@ -625,11 +633,15 @@ for epoch in range(num_epochs):
     extended_model.eval()
     with torch.no_grad():
         for inputs in dataloader_val:
-            val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, extended_model, None, False, val_gt_masks, classes, class_categories, device)
+            val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, extended_model, None, False, val_gt_masks, classes, class_categories, device, plot_preds=False)
 
-            epoch_val_losses.append(val_loss)
+            val_losses.append(val_loss)
             top1_val_accuracy.append(val_top1_acc)
             top5_val_accuracy.append(val_top5_acc)
+
+        epoch_val_losses.append(np.mean(val_losses))
+        top1_val_accs.append(np.mean(top1_val_accuracy))
+        top5_val_accs.append(np.mean(top5_val_accuracy))
 
         if use_wandb:
             wandb.log({'epoch classif val loss': np.mean(epoch_val_losses)})
@@ -640,11 +652,88 @@ for epoch in range(num_epochs):
     print(f'EPOCH: {epoch}. Validation classes loss: {np.mean(epoch_val_losses)}.   Top-1 accuracy: {np.mean(top1_val_accuracy)}.   Top-5 accuracy: {np.mean(top5_val_accuracy)}')
 
 # %%
+torch.save(extended_model.state_dict(), './weights/classif_checkpoint.pth')
+
+# %%
 plt.plot(list(range(len(epoch_train_losses))), epoch_train_losses, label='Training Loss')
 plt.plot(list(range(len(epoch_val_losses))), epoch_val_losses, label='Validation Loss')
 plt.title('Mean epoch loss \n mask with sigmoid')
 plt.xlabel('Epoch Number')
 plt.ylabel('Loss')
 plt.legend()
-plt.savefig('./plots/loss_classif.png')
+plt.savefig('./plots/loss_train_classif.png')
 plt.show()
+plt.close()
+
+# %%
+extended_model.load_state_dict(torch.load('./weights/classif_checkpoint.pth'))
+extended_model.eval()
+
+# inference on the test set
+dataset_test = ImageDataset(test_image_paths, test_bboxes, test_gt_masks, transform_image) 
+dataloader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=True)
+
+epoch_test_losses = []
+top1_test_accuracy = []
+top5_test_accuracy = []
+
+import random
+
+base_colors = [
+
+    (0, 255, 206),
+    (14, 122, 254),
+    (255, 171, 171),
+    (254, 2, 255),
+    (125, 165, 171),
+    (0, 24, 255),
+    (0, 184, 235),
+    (134, 34, 255),
+    (234, 206, 19),
+    (255, 129, 0),
+    (254, 0, 87),
+    (199, 252, 0),
+    
+    (255, 0, 255),  # Magenta
+    (191, 255, 0),   # Lime
+    (255, 0, 191),   # Fuchsia
+    (0, 191, 255),   # Aqua
+    (255, 191, 0),   # Orange
+    (191, 0, 255),   # Purple
+    (0, 255, 191),   # Teal
+    (0, 128, 0),    # Dark Green
+    (128, 0, 0),    # Dark Red
+    (0, 128, 128),  # Dark Cyan
+    (128, 0, 128),  # Dark Magenta
+    (128, 128, 0),  # Dark Yellow
+    (128, 128, 128),# Dark Grey
+    (255, 128, 128),# Light Red
+    (128, 255, 128),# Light Green
+    (128, 128, 255),# Light Blue
+    (255, 255, 128),# Light Yellow
+    (255, 128, 255),# Light Magenta
+    (128, 255, 255),# Light Cyan
+]
+
+num_colors_needed = len(class_categories.keys())
+colors = {class_categories[class_id]: base_colors[i] for i, class_id in enumerate(class_categories.keys())}
+
+import dataset_utils
+reload(dataset_utils)
+from dataset_utils import *
+
+with torch.no_grad():
+    for inputs in dataloader_test:
+        test_loss, test_top1_acc, test_top5_acc = process_batch(inputs, extended_model, None, False, test_gt_masks, classes, class_categories, device, plot_preds=True)
+
+        epoch_test_losses.append(test_loss)
+        top1_test_accuracy.append(test_top1_acc)
+        top5_test_accuracy.append(test_top5_acc)
+
+
+    if use_wandb:
+        wandb.log({'epoch classif test loss': np.mean(epoch_test_losses)})
+        wandb.log({'epoch test top-1 acc': np.mean(top1_test_accuracy)})
+        wandb.log({'epoch test top-5 acc': np.mean(top5_test_accuracy)})
+
+# %%
