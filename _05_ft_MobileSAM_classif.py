@@ -462,31 +462,6 @@ for name, param in mobile_sam_model.named_parameters():
 import torch
 import torch.nn as nn
 
-# class ExtendedSAMModel(nn.Module):
-#     def __init__(self, input_size, num_classes):
-#         super().__init__()
-      
-#         self.classifier = nn.Sequential(
-#             nn.Linear(input_size, 512), # TODO: use nn.AdaptiveAvgPool2d layer, as it is more robust to image size changes
-#             nn.ReLU(),
-#             nn.Dropout(0.1),
-#             nn.Linear(512, num_classes)
-#         )
-
-#     def forward(self, mask, iou_predictions):
-#         # Flatten and concatenate mask and IOU predictions
-#         flattened_mask = mask.view(-1)
-#         iou_predictions_flat = iou_predictions.view(-1)
-#         combined_features = torch.cat((flattened_mask, iou_predictions_flat), dim=0)
-
-#         # Pass through the classifier
-#         class_logits = self.classifier(combined_features)
-#         return class_logits
-
-# num_classes = len(class_categories.values())
-# extended_model = ExtendedSAMModel(786435, num_classes).to(device) # TODO: this hard-coded value only works for 512x512 masks and 3 IoUs per mask !!!
-# extended_model
-
 class ExtendedSAMModel(nn.Module):
     def __init__(self, input_size, num_classes):
         super().__init__()
@@ -521,215 +496,27 @@ import torch.nn.functional as F
 lr=3e-4
 wd=0.01
 optimizer = torch.optim.AdamW(extended_model.parameters(), lr=lr, weight_decay=wd)
-
 ce_loss_fn = nn.CrossEntropyLoss()
-
 scheduler = CosineAnnealingLR(optimizer, T_max=30, eta_min=1e-8) # not very helpful
 
-num_epochs= 1
-losses = []
-
-# def validate_model_classif(batch_size):
-#     dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
-#     dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
-
-#     validation_loss = []
-#     with torch.no_grad():
-#         top1_accs = 0.0
-#         top5_accs = 0.0
-#         top1_accuracy = []
-#         top5_accuracy = []
-#         for inputs in tqdm(dataloader_val): # take image ids
-#             image_loss = {}
-#             batch_loss = 0.0
-#             batch_size = min(len(inputs['image']), batch_size) # at the end, there's less than batch_size imgs in a batch (sometimes)
-
-#             top1_batch_accs = 0.0
-#             top5_batch_accs = 0.0
-
-#             with autocast(): 
-#                 for i in range(batch_size): 
-#                     image_loss[i]=0.0
-                    
-#                     image_masks = {k for k in val_gt_masks.keys() if k.startswith(inputs['image_id'][i])}
-#                     # input_image = inputs['image'][i].to(device)
-
-#                     image = cv2.imread(input_dir+inputs['image_id'][i])
-#                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-#                     input_image = torch.as_tensor(image, dtype=torch.float, device=device)
-#                     input_image = input_image/input_image.max()
-
-#                     # RUN PREDICTION ON IMAGE
-#                     for mask_id in image_masks:
-#                         # Expand the mask dimensions to (x, y, 1)
-#                         mask = np.expand_dims(val_gt_masks[mask_id], axis=-1)
-#                         mask_input_torch = torch.as_tensor(mask, dtype=torch.float, device=device)
-#                         mask_input_torch = mask_input_torch/mask_input_torch.max()
-
-#                         # print(input_image.shape, mask_input_torch.shape)
-
-#                         # Forward pass
-#                         outputs = extended_model(mask_input_torch*input_image).unsqueeze(0) 
-#                         # print((mask_input_torch*input_image).dtype, (mask_input_torch*input_image).min(), (mask_input_torch*input_image).max())
-#                         # plt.imshow((mask_input_torch*input_image).detach().cpu().numpy())
-#                         # plt.title(f'Predicted Class: {class_categories[torch.argmax(outputs).item()]}. Ground Truth Class: {class_categories[classes[mask_id]]}')
-#                         # plt.show()
-#                         # plt.close()
-                    
-#                         loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device))
-#                         image_loss[i] += loss
-
-#                         # top-k accuracy
-#                         top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5)) # percentage
-
-#                         print(top1_acc, top5_acc)
-#                         top1_batch_accs += top1_acc.item()
-#                         top5_batch_accs += top5_acc.item()
-
-#                     image_loss[i] = image_loss[i]/len(image_masks)
-#                     top1_accs += (top1_batch_accs/len(image_masks))
-#                     top5_accs += (top5_batch_accs/len(image_masks))
-
-#                     del input_image
-
-#                     batch_loss += image_loss[i]
-#                     torch.cuda.empty_cache()
-        
-#             batch_loss /= batch_size
-#             top1_accs /= batch_size
-#             top5_accs /= batch_size 
-
-#             validation_loss.append(batch_loss.item()) # type: ignore
-#             top1_accuracy.append(top1_accs)
-#             top5_accuracy.append(top5_accs)
-#             del batch_loss, image_loss
-#             torch.cuda.empty_cache()
-
-#     return np.mean(validation_loss), np.mean(top1_accuracy), np.mean(top5_accuracy)
-
+num_epochs= 10
 # %%
-def topk_accuracy(output, target, topk=(1,)):
 
-    print('output', output)
-    print('target', target)
+def topk_accuracy(outputs, labels, topk=(1,)):
+    """Compute the top-k accuracy for the specified values of k"""
     with torch.no_grad():
         maxk = max(topk)
-        _, pred = output.topk(maxk, 1, True, True)
-        print('pred:', pred)
+
+        _, pred = outputs.topk(maxk, 1, True, True)
         pred = pred.t()
-        print('target:', target.view(1, -1))
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-        print('correct:', correct)
+        correct = pred.eq(labels.view(1, -1).expand_as(pred))
+
         res = []
         for k in topk:
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0)) 
+            acc = correct_k.mul_(1.0)
+            res.append(acc.item())
         return res
-
-# %%
-
-# val_losses = []
-# for epoch in range(num_epochs):
-#     top1_accs = 0.0
-#     top5_accs = 0.0
-#     epoch_losses = []
-#     top1_accuracy = []
-#     top5_accuracy = []
-#     for inputs in tqdm(dataloader): # take image ids
-#         image_loss = {}
-#         batch_loss = 0.0
-#         batch_size = min(len(inputs['image']), batch_size) # at the end, there's less than batch_size imgs in a batch (sometimes)
-
-#         top1_batch_accs = 0.0
-#         top5_batch_accs = 0.0
-
-#         with autocast(): 
-#             for i in range(batch_size): 
-#                 image_loss[i]=0.0
-                
-#                 image_masks = {k for k in train_gt_masks.keys() if k.startswith(inputs['image_id'][i])}
-#                 # input_image = inputs['image'][i].to(device)
-
-#                 image = cv2.imread(input_dir+inputs['image_id'][i])
-#                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-#                 input_image = torch.as_tensor(image, dtype=torch.float, device=device)
-#                 input_image = input_image/input_image.max()
-
-#                 # RUN PREDICTION ON IMAGE
-#                 for mask_id in image_masks:
-#                     # Expand the mask dimensions to (x, y, 1)
-#                     mask = np.expand_dims(train_gt_masks[mask_id], axis=-1)
-#                     mask_input_torch = torch.as_tensor(mask, dtype=torch.float, device=device)
-#                     mask_input_torch = mask_input_torch/mask_input_torch.max()
-
-#                     # print(input_image.shape, mask_input_torch.shape)
-
-#                     # Forward pass
-#                     outputs = extended_model(mask_input_torch*input_image).unsqueeze(0) 
-#                     # print((mask_input_torch*input_image).dtype, (mask_input_torch*input_image).min(), (mask_input_torch*input_image).max())
-#                     # plt.imshow((mask_input_torch*input_image).detach().cpu().numpy())
-#                     # plt.title(f'Predicted Class: {class_categories[torch.argmax(outputs).item()]}. Ground Truth Class: {class_categories[classes[mask_id]]}')
-#                     # plt.show()
-#                     # plt.close()
-                   
-#                     loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device))
-#                     image_loss[i] += loss
-
-#                     # top-k accuracy
-#                     top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5)) # percentage
-#                     top1_batch_accs += top1_acc.item()
-#                     top5_batch_accs += top5_acc.item()
-
-#                 image_loss[i] = image_loss[i]/len(image_masks)
-#                 top1_batch_accs = top1_batch_accs/len(image_masks)
-#                 top5_batch_accs = top5_batch_accs/len(image_masks)
-
-#                 top1_accs += top1_batch_accs
-#                 top5_accs += top5_batch_accs
-
-#                 del input_image
-
-#                 batch_loss += image_loss[i]
-#                 torch.cuda.empty_cache()
-
-#         batch_loss /= batch_size
-#         top1_accs /= batch_size
-#         top5_accs /= batch_size 
-
-#         optimizer.zero_grad()
-#         batch_loss.backward() # type: ignore
-#         optimizer.step()
-
-#         epoch_losses.append(batch_loss.item()) # type: ignore
-#         top1_accuracy.append(top1_accs)
-#         top5_accuracy.append(top5_accs)
-#         del image_loss
-#         torch.cuda.empty_cache()
-
-#     losses.append(np.mean(epoch_losses))
-
-#     # validation loss
-#     extended_model.eval();
-#     val_loss, val_top1_acc, val_top5_acc = validate_model_classif(batch_size)
-#     val_losses.append(val_loss)
-#     extended_model.train();
-
-#     torch.cuda.empty_cache()
-
-#     if use_wandb:
-#         wandb.log({'epoch classif train loss': np.mean(epoch_losses)})
-#         wandb.log({'epoch classif val loss': val_loss})
-#     print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_losses)}.Validation classes loss: {np.mean(val_losses)} ')
-#     print(f'Top-1 accuracy: {np.mean(top1_accuracy)}. Top-5 accuracy: {np.mean(top5_accuracy)}. Validation Top-1 accuracy: {val_top1_acc}. Validation Top-5 accuracy: {val_top5_acc} ')
-    
-# torch.save(extended_model.state_dict(), 'classif_checkpoint.pth')
-
-# if use_wandb:
-#     wandb.run.summary["batch_size"] = batch_size
-#     wandb.run.summary["num_epochs"] = num_epochs
-#     wandb.run.summary["learning rate"] = lr
-#     wandb.run.summary["used area for DICE loss"] = 'YES'
-#     run.finish()
 
 # %%
 def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, class_categories, device):
@@ -737,11 +524,15 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
     batch_loss = 0.0
     batch_size = len(inputs['image'])
 
-    top1_batch_accs = 0.0
-    top5_batch_accs = 0.0
+    top1_batch_acc = 0.0
+    top5_batch_acc = 0.0
 
     with torch.set_grad_enabled(is_training):
         with autocast():
+            '''
+            This code doesn't use the transformed images (like in SAM), 
+            but the original images, normalised to [0,1].
+            '''
             for i in range(batch_size):
                 image_loss[i] = 0.0
 
@@ -752,36 +543,59 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
                 input_image = torch.as_tensor(image, dtype=torch.float, device=device)
                 input_image = input_image / input_image.max()
 
+                top1_img_acc = 0.0
+                top5_img_acc = 0.0
+
                 for mask_id in image_masks:
                     mask = np.expand_dims(gt_masks[mask_id], axis=-1)
                     mask_input_torch = torch.as_tensor(mask, dtype=torch.float, device=device)
                     mask_input_torch = mask_input_torch / mask_input_torch.max()
-
-                    outputs = model(mask_input_torch * input_image).unsqueeze(0)
+                
+                    outputs = model(mask_input_torch * input_image).unsqueeze(0) # also take the image pixels into account
                     loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device))
                     image_loss[i] += loss
 
+                    # print((mask_input_torch*input_image).dtype, (mask_input_torch*input_image).min(), (mask_input_torch*input_image).max())
+                    # plt.imshow((mask_input_torch*input_image).detach().cpu().numpy())
+                    # plt.title(f'Predicted Class: {class_categories[torch.argmax(outputs).item()]}. Ground Truth Class: {class_categories[classes[mask_id]]}')
+                    # plt.show()
+                    # plt.close()
+
                     top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5))
-                    top1_batch_accs += top1_acc.item()
-                    top5_batch_accs += top5_acc.item()
 
-                image_loss[i] = image_loss[i] / len(image_masks)
-                top1_batch_accs = top1_batch_accs / len(image_masks)
-                top5_batch_accs = top5_batch_accs / len(image_masks)
+                    if top1_acc>1:
+                        print("top1_acc:", top1_acc)
+                        import sys
+                        sys.exit()
 
-                batch_loss += image_loss[i]
+                    if top5_acc>1:
+                        print("top5_acc:", top5_acc)
+                        import sys
+                        sys.exit()
+
+                    if isinstance(top1_acc, torch.Tensor) and isinstance(top5_acc, torch.Tensor):
+                        top1_img_acc += top1_acc.item()
+                        top5_img_acc += top5_acc.item()
+                    else:
+                        top1_img_acc += top1_acc
+                        top5_img_acc += top5_acc
+
+                top1_batch_acc += (top1_img_acc / len(image_masks))
+                top5_batch_acc += (top5_img_acc / len(image_masks)) 
+                batch_loss += (image_loss[i] / len(image_masks))
+
                 torch.cuda.empty_cache()
 
         batch_loss /= batch_size
-        top1_batch_accs /= batch_size
-        top5_batch_accs /= batch_size
+        top1_batch_acc /= batch_size
+        top5_batch_acc /= batch_size
 
         if is_training:
             optimizer.zero_grad()
             batch_loss.backward()
             optimizer.step()
 
-    return batch_loss.item(), top1_batch_accs, top5_batch_accs
+    return batch_loss.item(), top1_batch_acc, top5_batch_acc
 # %%
 dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
 dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
@@ -797,7 +611,7 @@ top5_val_accuracy = []
 for epoch in range(num_epochs):
     extended_model.train()
     for inputs in tqdm(dataloader):
-        train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, model, optimizer, True, train_gt_masks, classes, class_categories, device)
+        train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, extended_model, optimizer, True, train_gt_masks, classes, class_categories, device)
     
         epoch_train_losses.append(train_loss)
         top1_train_accuracy.append(train_top1_acc)
@@ -808,12 +622,10 @@ for epoch in range(num_epochs):
         wandb.log({'epoch top-1 acc': np.mean(top1_train_accuracy)})
         wandb.log({'epoch top-5 acc': np.mean(top5_train_accuracy)})
 
-    print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_train_losses)}.Top-1 accuracy: {np.mean(top1_train_accuracy)}. Top-5 accuracy: {np.mean(top5_train_accuracy)}')
-
     extended_model.eval()
     with torch.no_grad():
-        for inputs in tqdm(dataloader_val):
-            val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, model, None, False, val_gt_masks, classes, class_categories, device)
+        for inputs in dataloader_val:
+            val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, extended_model, None, False, val_gt_masks, classes, class_categories, device)
 
             epoch_val_losses.append(val_loss)
             top1_val_accuracy.append(val_top1_acc)
@@ -823,422 +635,16 @@ for epoch in range(num_epochs):
             wandb.log({'epoch classif val loss': np.mean(epoch_val_losses)})
             wandb.log({'epoch val top-1 acc': np.mean(top1_val_accuracy)})
             wandb.log({'epoch val top-5 acc': np.mean(top5_val_accuracy)})
-
-        print(f'EPOCH: {epoch}. Validation classes loss: {np.mean(epoch_val_losses)}. Top-1 accuracy: {np.mean(top1_val_accuracy)}. Top-5 accuracy: {np.mean(top5_val_accuracy)}')
+    
+    print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_train_losses)}.   Top-1 accuracy: {np.mean(top1_train_accuracy)}. Top-5 accuracy: {np.mean(top5_train_accuracy)}')
+    print(f'EPOCH: {epoch}. Validation classes loss: {np.mean(epoch_val_losses)}.   Top-1 accuracy: {np.mean(top1_val_accuracy)}.   Top-5 accuracy: {np.mean(top5_val_accuracy)}')
 
 # %%
-plt.plot(list(range(len(losses))), losses, label='Training Loss')
-plt.plot(list(range(len(val_losses))), val_losses, label='Validation Loss')
+plt.plot(list(range(len(epoch_train_losses))), epoch_train_losses, label='Training Loss')
+plt.plot(list(range(len(epoch_val_losses))), epoch_val_losses, label='Validation Loss')
 plt.title('Mean epoch loss \n mask with sigmoid')
 plt.xlabel('Epoch Number')
 plt.ylabel('Loss')
 plt.legend()
-plt.savefig('./plots/loss_mask_valid_points_prompt.png')
+plt.savefig('./plots/loss_classif.png')
 plt.show()
-
-# # %%
-
-# # %% [markdown]
-# # **AutomaticMixedPrecision**
-    
-# scaler = torch.cuda.amp.GradScaler()
-
-# # %%
-# len(train_gt_masks.keys())
-
-# # # %%
-# # def validate_model():
-# #     validation_loss = []
-# #     total_area= 0.0
-# #     with torch.no_grad():  
-# #         for k in val_gt_masks.keys():
-# #             prompt_box = np.array(val_bboxes[k])
-# #             box = predictor.transform.apply_boxes(prompt_box, original_image_size)
-# #             box_torch = torch.as_tensor(box, dtype=torch.float, device=device)
-# #             box_torch = box_torch[None, :]
-            
-# #             mask_input_torch = torch.as_tensor(val_gt_masks[k], dtype=torch.float, device=device).unsqueeze(0).unsqueeze(0)
-
-# #             point_coords = np.array([(val_bboxes[k][2]+val_bboxes[k][0])/2.0, (val_bboxes[k][3]+val_bboxes[k][1])/2.0])
-# #             point_labels = np.array([1])
-# #             point_coords = predictor.transform.apply_coords(point_coords, original_image_size)
-# #             coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=device).unsqueeze(0)
-# #             labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=device)
-# #             coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
-
-# #             sparse_embeddings, dense_embeddings = mobile_sam_model.prompt_encoder(
-# #               points=(coords_torch,labels_torch),
-# #               boxes=box_torch,
-# #               masks=None, 
-# #             )
-
-# #             low_res_masks, iou_predictions = mobile_sam_model.mask_decoder(
-# #             image_embeddings=image_embedding,
-# #             image_pe=mobile_sam_model.prompt_encoder.get_dense_pe(),
-# #             sparse_prompt_embeddings=sparse_embeddings,
-# #             dense_prompt_embeddings=dense_embeddings,
-# #             multimask_output=True,
-# #             )
-            
-# #             downscaled_masks = mobile_sam_model.postprocess_masks(low_res_masks, input_size, original_image_size).to(device)
-# #             binary_mask = torch.sigmoid(downscaled_masks - mobile_sam_model.mask_threshold)
-            
-# #             numpy_binary_mask = binary_mask.detach().cpu().numpy()
-# #             gt_mask_resized = torch.from_numpy(np.resize(val_gt_masks[k], (1, 1, val_gt_masks[k].shape[0], val_gt_masks[k].shape[1]))).to(device)
-# #             gt_binary_mask = torch.as_tensor(gt_mask_resized >0, dtype=torch.float32) 
-# #             numpy_gt_binary_mask = gt_binary_mask.contiguous().detach().cpu().numpy()
-            
-# #             mask_area = np.sum(val_gt_masks[k])
-# #             validation_loss.append(dice_loss(binary_mask, gt_binary_mask, negative_mask, mask_area) * mask_area)
-# #             total_area += mask_area
-
-# #             # print(f'val one image{k}: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
-            
-# #             torch.cuda.empty_cache()
-            
-# #             # fig, axs = plt.subplots(1, 2, figsize=(15, 5))
-            
-# #             # # Ground truth mask
-# #             # axs[0].imshow(numpy_gt_binary_mask[0, 0], cmap='viridis')
-# #             # axs[0].set_title('Ground Truth Mask')
-            
-# #             # # Predicted mask
-#     #          # axs[1].imshow(numpy_binary_mask[0, 0], cmap='viridis')
-#     #         # axs[1].set_title('Predicted Mask')
-
-#     #         # plt.show()
-#     #         # plt.close()
-
-#     # validation_loss = torch.sum(validation_loss)
-#     # validation_loss /= total_area
-
-#     # return validation_loss
-
-# import predictor_utils
-# reload(predictor_utils)
-# from predictor_utils import *
-
-# def validate_model_AMG(ft_mobile_sam_model, mobile_sam_model_orig):
-#     validation_loss = []
-
-#     for val_img_path in val_image_paths:
-#         with torch.no_grad():
-
-#             print('Original MobileSAM')
-#             annotated_image_orig_mobile_sam, annotated_image_orig_mobile_sam_loss = amg_predict(mobile_sam_model_orig, orig_mobile_SamAutomaticMaskGenerator, \
-#                                                        val_gt_masks, 'ft_MobileSAM', val_img_path, mask_on_negative=False, show_plot=True)
-
-#             print('Fine-tuned MobileSAM')
-#             annotated_img, loss = amg_predict(mobile_sam_model, SamAutomaticMaskGenerator, val_gt_masks, 'ft_MobileSAM', \
-#                                               val_img_path, mask_on_negative=True, show_plot=True)
-#             # print('validation loss =', loss)
-#             validation_loss.append(loss)
-
-#     return np.mean(validation_loss)
-
-# # %%
-# def one_image_predict(image_masks):
-#     image_loss=[]
-#     mask_result = []
-#     total_area = 0.0
-#     ce_loss = 0.0
-#     for k in image_masks: 
-#         # with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof: # needs cudnn 
-#         # with profiler.profile(profile_memory=True, use_cuda=True, record_shapes=True) as prof: # this needs pytorch build from Git for TORCH_USE_CUDA_DSA=1
-#         # with torch.autograd.profiler.profile() as prof:
-#         # if True:
-#                 # with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof:
-#                 if True:
-#                     # process bboxes
-#                     prompt_box = np.array(train_bboxes[k])
-#                     box = predictor.transform.apply_boxes(prompt_box, original_image_size)
-#                     box_torch = torch.as_tensor(box, dtype=torch.float, device=device)
-#                     box_torch = box_torch[None, :]
-
-#                 # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5))
-
-#                 # process masks
-#                 mask_input_torch = torch.as_tensor(train_gt_masks[k], dtype=torch.float, device=predictor.device).unsqueeze(0).unsqueeze(0)
-
-#                 # process coords and labels
-#                 x_min, y_min, x_max, y_max = train_bboxes[k]
-#                 x_min, y_min, x_max, y_max = map(int, [x_min, y_min, x_max, y_max])
-        
-#                 point_coords = np.array([(train_bboxes[k][2]+train_bboxes[k][0])/2.0, (train_bboxes[k][3]+train_bboxes[k][1])/2.0])
-#                 point_labels = np.array([1])
-#                 point_coords = predictor.transform.apply_coords(point_coords, original_image_size)
-#                 coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=predictor.device).unsqueeze(0)
-#                 labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=predictor.device)
-#                 coords_torch, labels_torch = coords_torch[None, :, :], labels_torch[None, :]
-
-#                 # mask_copy = train_gt_masks[k].copy()
-#                 # mask_copy = cv2.cvtColor(mask_copy, cv2.COLOR_GRAY2BGR)
-#                 # mask_copy = mask_copy * 255
-#                 # print(x_min, y_min, x_max, y_max)
-#                 # cv2.rectangle(mask_copy, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
-#                 # plt.imshow(mask_copy)
-#                 # plt.plot((train_bboxes[k][2]+train_bboxes[k][0])/2.0, (train_bboxes[k][3]+train_bboxes[k][1])/2.0, 'ro')
-#                 # plt.show()
-
-#                 # with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof:
-#                 if True:
-#                     sparse_embeddings, dense_embeddings = mobile_sam_model.prompt_encoder(
-#                     points=(coords_torch, labels_torch),
-#                     boxes=box_torch, #None,
-#                     masks=None,
-#                     )
-#                 # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5))
-
-#                 # print(box_torch.shape, mask_input_torch.shape)
-
-#                 del box_torch, mask_input_torch, coords_torch, labels_torch
-#                 torch.cuda.empty_cache()
-
-#                 # print(image_embedding.shape, mobile_sam_model.prompt_encoder.get_dense_pe().shape, sparse_embeddings.shape, dense_embeddings.shape)
-#                 # with profile(activities=[ProfilerActivity.CUDA], record_shapes=True, profile_memory=True, with_stack=True, with_modules=True) as prof:
-#                 if True: 
-#                     low_res_masks, iou_predictions = mobile_sam_model.mask_decoder(
-#                     image_embeddings=image_embedding,
-#                     image_pe=mobile_sam_model.prompt_encoder.get_dense_pe(),
-#                     sparse_prompt_embeddings=sparse_embeddings,
-#                     dense_prompt_embeddings=dense_embeddings,
-#                     multimask_output=True, # this works better for ambiguous prompts (single points)
-#                     )
-#                 # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5))
-        
-#                 # print(low_res_masks.shape)
-
-#                 downscaled_masks = mobile_sam_model.postprocess_masks(low_res_masks, input_size, original_image_size).to(device)
-#                 # binary_mask = normalize(threshold(downscaled_masks, 0.0, 0))
-#                 binary_mask = torch.sigmoid(downscaled_masks - mobile_sam_model.mask_threshold)
-#                 gt_mask_resized = torch.from_numpy(np.resize(train_gt_masks[k], (1, 1, train_gt_masks[k].shape[0], train_gt_masks[k].shape[1]))).to(device)
-#                 gt_binary_mask = torch.as_tensor(gt_mask_resized>0, dtype=torch.float32) 
-#                 numpy_gt_binary_mask = gt_binary_mask.contiguous().detach().cpu().numpy()
-
-#                 # CE loss over mask
-#                 flattened_mask = binary_mask.view(-1)
-#                 iou_predictions_flat = iou_predictions.view(-1)
-#                 combined_features = torch.cat((flattened_mask, iou_predictions_flat), dim=0)
-#                 # print(len(combined_features))
-#                 class_output = extended_model(binary_mask, iou_predictions).unsqueeze(0)
-#                 # print('class_output', class_output)
-#                 gt_class = torch.as_tensor([classes[k]], dtype=torch.long, device=device)
-#                 # find the index where the max value is in the class_output
-#                 # max_index = torch.argmax(class_output)
-#                 # print('class_output shape:', class_output, 'gt class', gt_class)
-#                 ce_loss += ce_loss_fn(class_output, gt_class)
-
-#                 # print('CE loss:', ce_loss_fn(class_output, gt_class))
-
-#                 # print(iou_predictions)
-#                 mask_result.append(binary_mask[0][0].detach().cpu())
-
-#                 # plt.imshow(numpy_gt_binary_mask[0][0])
-#                 # plt.show()
-        
-#                 # compute weighted dice loss
-#                 # print(train_gt_masks[k].shape,np.sum(train_gt_masks[k]))
-#                 mask_area = np.sum(train_gt_masks[k])
-
-#                 if mask_area > 0:
-#                   image_loss.append(dice_loss(binary_mask, gt_binary_mask, negative_mask, mask_area) * mask_area)
-#                   total_area += mask_area
-
-#                 del binary_mask 
-#                 del gt_mask_resized, numpy_gt_binary_mask 
-#                 del low_res_masks, iou_predictions 
-#                 del downscaled_masks, gt_binary_mask, gt_class, class_output
-        
-#                 torch.cuda.empty_cache()
-#                 # print('one mask', k, 'done')
-#                 # # print(f'one image{k}: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
-#                 import sys
-#                 sys.exit()
-#         # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=5))
-
-#     image_loss = torch.stack(image_loss)
-#     image_loss = torch.sum(image_loss)
-#     image_loss /= total_area
-#     if len(image_masks) > 0:
-#         ce_loss /= len(image_masks)
-#     image_loss = (image_loss + ce_loss)/2.0
-#     # print(prof.key_averages().table(sort_by="self_cuda_memory_usage"))
-    
-#     # plt.figure(figsize=(10, 5))
-#     # fig, axs = plt.subplots(1, 2)
-
-#     # axs[0].imshow(image)
-#     # show_masks(mask_result, axs[0])
-#     # axs[0].set_title('Predicted')
-
-#     # axs[1].imshow(image)
-#     # show_masks([train_gt_masks[k] for k in image_masks], axs[1])
-#     # axs[1].set_title('Ground truth')
-    
-#     # plt.show()
-#     # plt.close()
-#     # print('image loss:', image_loss)
-#     return image_loss
-
-# # %%
-
-# num_epochs = 1
-# losses = []
-# valid_losses = []
-# valid_bboxes_losses = []
-# predictor = SamPredictor(mobile_sam_model)
-
-# for epoch in range(num_epochs):
-	
-#     epoch_losses = []
-#     for inputs in tqdm(dataloader): # take image ids
-#         image_loss = {}
-#         batch_loss = 0.0
-#         batch_size = min(len(inputs['image']), batch_size) # at the end, there's less than batch_size imgs in a batch (sometimes)
-
-#         with autocast(): 
-#             for i in range(batch_size): 
-#                     image_loss[i]=0.0
-                    
-#                     image_masks = {k for k in train_gt_masks.keys() if k.startswith(inputs['image_id'][i])}
-#                     input_image = inputs['image'][i].to(device)
-
-#                     image = cv2.imread(input_dir+inputs['image_id'][i])
-#                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-#                     original_image_size = image.shape[:-1]
-#                     input_size = (1024, 1024)
-#                     # np_image = np.transpose(input_image[0].detach().cpu().numpy(), (1, 2, 0))
-#                     # print(np.min(np_image), np.max(np_image))
-#                     # plt.imshow(input_image[0][0].detach().cpu(), cmap='viridis')
-#                     # plt.title(f'{inputs["image_id"][i]}.png')
-#                     # plt.show()
-
-#                     # IMAGE ENCODER
-#                     image_embedding = mobile_sam_model.image_encoder(input_image)
-
-#                     del input_image
-
-#                     # negative_mask has the size of the image
-#                     negative_mask = np.where(image>0, True, False)
-#                     negative_mask = torch.from_numpy(negative_mask)  
-#                     negative_mask = negative_mask.permute(2, 0, 1)
-#                     negative_mask = negative_mask[0]
-#                     negative_mask = negative_mask.unsqueeze(0).unsqueeze(0)
-#                     negative_mask = negative_mask.to(device)
-#                     # del image
-
-#                     # RUN PREDICTION ON IMAGE
-#                     image_loss[i] = one_image_predict(image_masks)
-                    
-#                     batch_loss += image_loss[i]
-#                     del image_embedding, negative_mask 
-#                     torch.cuda.empty_cache()
-        
-#         batch_loss /= batch_size
-#         optimizer.zero_grad()
-
-#         # AMP
-#         # scaler.scale(batch_loss).backward()
-#         batch_loss.backward()
-#         # scaler.step(optimizer)
-#         optimizer.step()
-#         # scaler.update()
-
-#         epoch_losses.append(batch_loss.item())
-#         torch.cuda.empty_cache()
-#         del batch_loss, image_loss
-#         # print('after emptying cache: Allocated memory:', torch.cuda.memory_allocated()/(1024**2), 'MB. Reserved memory:', torch.cuda.memory_reserved()/(1024**2), 'MB')
-#         print(epoch_losses)
-
-#     # validation loss
-#     losses.append(np.mean(epoch_losses))
-#     # mobile_sam_model.eval();
-#     # # valid_losses.append(validate_model_AMG())
-#     # # valid_bboxes_losses.append(validate_model())
-#     # mobile_sam_model.train();
-#     torch.cuda.empty_cache()
-
-#     if use_wandb:
-#         wandb.log({'epoch training loss': np.mean(epoch_losses)})
-#         wandb.log({'epoch validation loss': np.mean(valid_bboxes_losses)})
-#     # print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}. Validation AMG loss: {np.mean(valid_losses)}. Validation bboxes loss: {np.mean(valid_bboxes_losses)} ')
-#     print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}.Validation bboxes loss: {np.mean(valid_bboxes_losses)} ')
-#     # print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}.')
-#     if  epoch%8 == 0:
-#         torch.save(mobile_sam_model.state_dict(), f'mobile_sam_model_checkpoint{epoch}.pth')  
-
-# torch.save(mobile_sam_model.state_dict(), 'mobile_sam_model_checkpoint.pth')
-# torch.save(extended_model.state_dict(), 'classif_checkpoint.pth')
-
-# print('Training losses:', losses)
-# print('valid_bboxes_losses losses:', valid_bboxes_losses)
-# # print('Val losses:', valid_losses)
-
-# if use_wandb:
-#     wandb.run.summary["batch_size"] = batch_size
-#     wandb.run.summary["num_epochs"] = num_epochs
-#     wandb.run.summary["learning rate"] = lr
-#     wandb.run.summary["used area for DICE loss"] = 'YES'
-#     run.finish()
-
-# # %% [markdown]
-# # **original MobileSAM checkpoint**
-
-# # %%
-# import sys
-# sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-master/')
-# import mobile_sam
-# from mobile_sam import sam_model_registry as orig_mobile_sam_registry, \
-# SamAutomaticMaskGenerator as orig_mobile_SamAutomaticMaskGenerator, \
-# SamPredictor as orig_mobile_SamPredictor
-
-# orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-master/weights/mobile_sam.pt"
-# print("device:", device)
-
-# mobile_sam_model_orig = orig_mobile_sam_registry["vit_t" ](checkpoint=orig_mobile_sam_checkpoint)
-# mobile_sam_model_orig.to(device);
-# mobile_sam_model_orig.eval();
-
-# # %%
-# # validate_model_AMG(mobile_sam_model, mobile_sam_model_orig)
-
-# # %%
-# print('valid_losses', valid_losses)
-# print('valid_bboxes_losses', valid_bboxes_losses)
-
-# # %%
-# # check the GPU memory after training
-# torch.cuda.empty_cache()
-# print(torch.cuda.memory_allocated()/(1024**2)) #MB
-# print(torch.cuda.memory_reserved()/(1024**2))
-
-# # %%
-# plt.plot(list(range(len(losses))), losses, label='Training Loss')
-# plt.plot(list(range(len(valid_bboxes_losses))), valid_bboxes_losses, label='Validation Loss')
-# plt.title('Mean epoch loss \n mask with sigmoid')
-# plt.xlabel('Epoch Number')
-# plt.ylabel('Loss')
-# plt.legend()
-# plt.savefig('./plots/loss_mask_valid_points_prompt.png')
-# plt.show()
-
-# # %%
-# # plt.plot(list(range(len(losses))), losses)
-# # plt.title('Mean epoch loss \n mask with sigmoid')
-# # plt.xlabel('Epoch Number')
-# # plt.ylabel('Loss')
-# # plt.savefig('loss_mask_sigmoid_training.png')
-# # plt.show()
-# # plt.close()
-
-# # %%
-
-
-# # %%
-
-
-# # %%
-
-
-
