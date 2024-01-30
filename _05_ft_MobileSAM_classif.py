@@ -526,211 +526,305 @@ ce_loss_fn = nn.CrossEntropyLoss()
 
 scheduler = CosineAnnealingLR(optimizer, T_max=30, eta_min=1e-8) # not very helpful
 
-num_epochs= 3
+num_epochs= 1
 losses = []
 
-def validate_model_classif(batch_size):
-    dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
-    dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
+# def validate_model_classif(batch_size):
+#     dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
+#     dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
 
-    validation_loss = []
-    with torch.no_grad():
-        top1_accs = 0.0
-        top5_accs = 0.0
-        top1_accuracy = []
-        top5_accuracy = []
-        for inputs in tqdm(dataloader_val): # take image ids
-            image_loss = {}
-            batch_loss = 0.0
-            batch_size = min(len(inputs['image']), batch_size) # at the end, there's less than batch_size imgs in a batch (sometimes)
+#     validation_loss = []
+#     with torch.no_grad():
+#         top1_accs = 0.0
+#         top5_accs = 0.0
+#         top1_accuracy = []
+#         top5_accuracy = []
+#         for inputs in tqdm(dataloader_val): # take image ids
+#             image_loss = {}
+#             batch_loss = 0.0
+#             batch_size = min(len(inputs['image']), batch_size) # at the end, there's less than batch_size imgs in a batch (sometimes)
 
-            top1_batch_accs = 0.0
-            top5_batch_accs = 0.0
+#             top1_batch_accs = 0.0
+#             top5_batch_accs = 0.0
 
-            with autocast(): 
-                for i in range(batch_size): 
-                    image_loss[i]=0.0
+#             with autocast(): 
+#                 for i in range(batch_size): 
+#                     image_loss[i]=0.0
                     
-                    image_masks = {k for k in val_gt_masks.keys() if k.startswith(inputs['image_id'][i])}
-                    # input_image = inputs['image'][i].to(device)
+#                     image_masks = {k for k in val_gt_masks.keys() if k.startswith(inputs['image_id'][i])}
+#                     # input_image = inputs['image'][i].to(device)
 
-                    image = cv2.imread(input_dir+inputs['image_id'][i])
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    input_image = torch.as_tensor(image, dtype=torch.float, device=device)
-                    input_image = input_image/input_image.max()
+#                     image = cv2.imread(input_dir+inputs['image_id'][i])
+#                     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+#                     input_image = torch.as_tensor(image, dtype=torch.float, device=device)
+#                     input_image = input_image/input_image.max()
 
-                    # RUN PREDICTION ON IMAGE
-                    for mask_id in image_masks:
-                        # Expand the mask dimensions to (x, y, 1)
-                        mask = np.expand_dims(val_gt_masks[mask_id], axis=-1)
-                        mask_input_torch = torch.as_tensor(mask, dtype=torch.float, device=device)
-                        mask_input_torch = mask_input_torch/mask_input_torch.max()
+#                     # RUN PREDICTION ON IMAGE
+#                     for mask_id in image_masks:
+#                         # Expand the mask dimensions to (x, y, 1)
+#                         mask = np.expand_dims(val_gt_masks[mask_id], axis=-1)
+#                         mask_input_torch = torch.as_tensor(mask, dtype=torch.float, device=device)
+#                         mask_input_torch = mask_input_torch/mask_input_torch.max()
 
-                        # print(input_image.shape, mask_input_torch.shape)
+#                         # print(input_image.shape, mask_input_torch.shape)
 
-                        # Forward pass
-                        outputs = extended_model(mask_input_torch*input_image).unsqueeze(0) 
-                        # print((mask_input_torch*input_image).dtype, (mask_input_torch*input_image).min(), (mask_input_torch*input_image).max())
-                        # plt.imshow((mask_input_torch*input_image).detach().cpu().numpy())
-                        # plt.title(f'Predicted Class: {class_categories[torch.argmax(outputs).item()]}. Ground Truth Class: {class_categories[classes[mask_id]]}')
-                        # plt.show()
-                        # plt.close()
+#                         # Forward pass
+#                         outputs = extended_model(mask_input_torch*input_image).unsqueeze(0) 
+#                         # print((mask_input_torch*input_image).dtype, (mask_input_torch*input_image).min(), (mask_input_torch*input_image).max())
+#                         # plt.imshow((mask_input_torch*input_image).detach().cpu().numpy())
+#                         # plt.title(f'Predicted Class: {class_categories[torch.argmax(outputs).item()]}. Ground Truth Class: {class_categories[classes[mask_id]]}')
+#                         # plt.show()
+#                         # plt.close()
                     
-                        loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device))
-                        image_loss[i] += loss
+#                         loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device))
+#                         image_loss[i] += loss
 
-                        # top-k accuracy
-                        top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5)) # percentage
-                        top1_batch_accs += top1_acc.item() / 100
-                        top5_batch_accs += top5_acc.item() / 100
+#                         # top-k accuracy
+#                         top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5)) # percentage
 
-                    image_loss[i] = image_loss[i]/len(image_masks)
-                    top1_batch_accs = top1_batch_accs/len(image_masks)
-                    top5_batch_accs = top5_batch_accs/len(image_masks)
+#                         print(top1_acc, top5_acc)
+#                         top1_batch_accs += top1_acc.item()
+#                         top5_batch_accs += top5_acc.item()
 
-                    top1_accs += top1_batch_accs
-                    top5_accs += top5_batch_accs
+#                     image_loss[i] = image_loss[i]/len(image_masks)
+#                     top1_accs += (top1_batch_accs/len(image_masks))
+#                     top5_accs += (top5_batch_accs/len(image_masks))
 
-                    del input_image
+#                     del input_image
 
-                    batch_loss += image_loss[i]
-                    torch.cuda.empty_cache()
+#                     batch_loss += image_loss[i]
+#                     torch.cuda.empty_cache()
         
-            batch_loss /= batch_size
-            top1_accs /= batch_size
-            top5_accs /= batch_size 
+#             batch_loss /= batch_size
+#             top1_accs /= batch_size
+#             top5_accs /= batch_size 
 
-            print(top1_accs, top5_accs)
+#             validation_loss.append(batch_loss.item()) # type: ignore
+#             top1_accuracy.append(top1_accs)
+#             top5_accuracy.append(top5_accs)
+#             del batch_loss, image_loss
+#             torch.cuda.empty_cache()
 
-            validation_loss.append(batch_loss.item()) # type: ignore
-            top1_accuracy.append(top1_accs)
-            top5_accuracy.append(top5_accs)
-            del batch_loss, image_loss
-            torch.cuda.empty_cache()
-
-    return np.mean(validation_loss), np.mean(top1_accuracy), np.mean(top5_accuracy)
+#     return np.mean(validation_loss), np.mean(top1_accuracy), np.mean(top5_accuracy)
 
 # %%
 def topk_accuracy(output, target, topk=(1,)):
 
+    print('output', output)
+    print('target', target)
     with torch.no_grad():
         maxk = max(topk)
-        batch_size = target.size(0)
-
         _, pred = output.topk(maxk, 1, True, True)
+        print('pred:', pred)
         pred = pred.t()
+        print('target:', target.view(1, -1))
         correct = pred.eq(target.view(1, -1).expand_as(pred))
-
+        print('correct:', correct)
         res = []
         for k in topk:
             correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
+            res.append(correct_k.mul_(100.0)) 
         return res
 
 # %%
 
-val_losses = []
-for epoch in range(num_epochs):
-    top1_accs = 0.0
-    top5_accs = 0.0
-    epoch_losses = []
-    top1_accuracy = []
-    top5_accuracy = []
-    for inputs in tqdm(dataloader): # take image ids
-        image_loss = {}
-        batch_loss = 0.0
-        batch_size = min(len(inputs['image']), batch_size) # at the end, there's less than batch_size imgs in a batch (sometimes)
+# val_losses = []
+# for epoch in range(num_epochs):
+#     top1_accs = 0.0
+#     top5_accs = 0.0
+#     epoch_losses = []
+#     top1_accuracy = []
+#     top5_accuracy = []
+#     for inputs in tqdm(dataloader): # take image ids
+#         image_loss = {}
+#         batch_loss = 0.0
+#         batch_size = min(len(inputs['image']), batch_size) # at the end, there's less than batch_size imgs in a batch (sometimes)
 
-        top1_batch_accs = 0.0
-        top5_batch_accs = 0.0
+#         top1_batch_accs = 0.0
+#         top5_batch_accs = 0.0
 
-        with autocast(): 
-            for i in range(batch_size): 
-                image_loss[i]=0.0
+#         with autocast(): 
+#             for i in range(batch_size): 
+#                 image_loss[i]=0.0
                 
-                image_masks = {k for k in train_gt_masks.keys() if k.startswith(inputs['image_id'][i])}
-                # input_image = inputs['image'][i].to(device)
+#                 image_masks = {k for k in train_gt_masks.keys() if k.startswith(inputs['image_id'][i])}
+#                 # input_image = inputs['image'][i].to(device)
 
-                image = cv2.imread(input_dir+inputs['image_id'][i])
+#                 image = cv2.imread(input_dir+inputs['image_id'][i])
+#                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+#                 input_image = torch.as_tensor(image, dtype=torch.float, device=device)
+#                 input_image = input_image/input_image.max()
+
+#                 # RUN PREDICTION ON IMAGE
+#                 for mask_id in image_masks:
+#                     # Expand the mask dimensions to (x, y, 1)
+#                     mask = np.expand_dims(train_gt_masks[mask_id], axis=-1)
+#                     mask_input_torch = torch.as_tensor(mask, dtype=torch.float, device=device)
+#                     mask_input_torch = mask_input_torch/mask_input_torch.max()
+
+#                     # print(input_image.shape, mask_input_torch.shape)
+
+#                     # Forward pass
+#                     outputs = extended_model(mask_input_torch*input_image).unsqueeze(0) 
+#                     # print((mask_input_torch*input_image).dtype, (mask_input_torch*input_image).min(), (mask_input_torch*input_image).max())
+#                     # plt.imshow((mask_input_torch*input_image).detach().cpu().numpy())
+#                     # plt.title(f'Predicted Class: {class_categories[torch.argmax(outputs).item()]}. Ground Truth Class: {class_categories[classes[mask_id]]}')
+#                     # plt.show()
+#                     # plt.close()
+                   
+#                     loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device))
+#                     image_loss[i] += loss
+
+#                     # top-k accuracy
+#                     top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5)) # percentage
+#                     top1_batch_accs += top1_acc.item()
+#                     top5_batch_accs += top5_acc.item()
+
+#                 image_loss[i] = image_loss[i]/len(image_masks)
+#                 top1_batch_accs = top1_batch_accs/len(image_masks)
+#                 top5_batch_accs = top5_batch_accs/len(image_masks)
+
+#                 top1_accs += top1_batch_accs
+#                 top5_accs += top5_batch_accs
+
+#                 del input_image
+
+#                 batch_loss += image_loss[i]
+#                 torch.cuda.empty_cache()
+
+#         batch_loss /= batch_size
+#         top1_accs /= batch_size
+#         top5_accs /= batch_size 
+
+#         optimizer.zero_grad()
+#         batch_loss.backward() # type: ignore
+#         optimizer.step()
+
+#         epoch_losses.append(batch_loss.item()) # type: ignore
+#         top1_accuracy.append(top1_accs)
+#         top5_accuracy.append(top5_accs)
+#         del image_loss
+#         torch.cuda.empty_cache()
+
+#     losses.append(np.mean(epoch_losses))
+
+#     # validation loss
+#     extended_model.eval();
+#     val_loss, val_top1_acc, val_top5_acc = validate_model_classif(batch_size)
+#     val_losses.append(val_loss)
+#     extended_model.train();
+
+#     torch.cuda.empty_cache()
+
+#     if use_wandb:
+#         wandb.log({'epoch classif train loss': np.mean(epoch_losses)})
+#         wandb.log({'epoch classif val loss': val_loss})
+#     print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_losses)}.Validation classes loss: {np.mean(val_losses)} ')
+#     print(f'Top-1 accuracy: {np.mean(top1_accuracy)}. Top-5 accuracy: {np.mean(top5_accuracy)}. Validation Top-1 accuracy: {val_top1_acc}. Validation Top-5 accuracy: {val_top5_acc} ')
+    
+# torch.save(extended_model.state_dict(), 'classif_checkpoint.pth')
+
+# if use_wandb:
+#     wandb.run.summary["batch_size"] = batch_size
+#     wandb.run.summary["num_epochs"] = num_epochs
+#     wandb.run.summary["learning rate"] = lr
+#     wandb.run.summary["used area for DICE loss"] = 'YES'
+#     run.finish()
+
+# %%
+def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, class_categories, device):
+    image_loss = {}
+    batch_loss = 0.0
+    batch_size = len(inputs['image'])
+
+    top1_batch_accs = 0.0
+    top5_batch_accs = 0.0
+
+    with torch.set_grad_enabled(is_training):
+        with autocast():
+            for i in range(batch_size):
+                image_loss[i] = 0.0
+
+                image_masks = {k for k in gt_masks.keys() if k.startswith(inputs['image_id'][i])}
+
+                image = cv2.imread(input_dir + inputs['image_id'][i])
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 input_image = torch.as_tensor(image, dtype=torch.float, device=device)
-                input_image = input_image/input_image.max()
+                input_image = input_image / input_image.max()
 
-                # RUN PREDICTION ON IMAGE
                 for mask_id in image_masks:
-                    # Expand the mask dimensions to (x, y, 1)
-                    mask = np.expand_dims(train_gt_masks[mask_id], axis=-1)
+                    mask = np.expand_dims(gt_masks[mask_id], axis=-1)
                     mask_input_torch = torch.as_tensor(mask, dtype=torch.float, device=device)
-                    mask_input_torch = mask_input_torch/mask_input_torch.max()
+                    mask_input_torch = mask_input_torch / mask_input_torch.max()
 
-                    # print(input_image.shape, mask_input_torch.shape)
-
-                    # Forward pass
-                    outputs = extended_model(mask_input_torch*input_image).unsqueeze(0) 
-                    # print((mask_input_torch*input_image).dtype, (mask_input_torch*input_image).min(), (mask_input_torch*input_image).max())
-                    # plt.imshow((mask_input_torch*input_image).detach().cpu().numpy())
-                    # plt.title(f'Predicted Class: {class_categories[torch.argmax(outputs).item()]}. Ground Truth Class: {class_categories[classes[mask_id]]}')
-                    # plt.show()
-                    # plt.close()
-                   
+                    outputs = model(mask_input_torch * input_image).unsqueeze(0)
                     loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device))
                     image_loss[i] += loss
 
-                    # top-k accuracy
-                    top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5)) # percentage
-                    top1_batch_accs += top1_acc.item() / 100
-                    top5_batch_accs += top5_acc.item() / 100
+                    top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5))
+                    top1_batch_accs += top1_acc.item()
+                    top5_batch_accs += top5_acc.item()
 
-                image_loss[i] = image_loss[i]/len(image_masks)
-                top1_batch_accs = top1_batch_accs/len(image_masks)
-                top5_batch_accs = top5_batch_accs/len(image_masks)
-
-                top1_accs += top1_batch_accs
-                top5_accs += top5_batch_accs
-
-                del input_image
+                image_loss[i] = image_loss[i] / len(image_masks)
+                top1_batch_accs = top1_batch_accs / len(image_masks)
+                top5_batch_accs = top5_batch_accs / len(image_masks)
 
                 batch_loss += image_loss[i]
                 torch.cuda.empty_cache()
-    
+
         batch_loss /= batch_size
-        top1_accs /= batch_size
-        top5_accs /= batch_size 
+        top1_batch_accs /= batch_size
+        top5_batch_accs /= batch_size
 
-        optimizer.zero_grad()
-        batch_loss.backward() # type: ignore
-        optimizer.step()
+        if is_training:
+            optimizer.zero_grad()
+            batch_loss.backward()
+            optimizer.step()
 
-        epoch_losses.append(batch_loss.item()) # type: ignore
-        top1_accuracy.append(top1_accs)
-        top5_accuracy.append(top5_accs)
-        del image_loss
-        torch.cuda.empty_cache()
+    return batch_loss.item(), top1_batch_accs, top5_batch_accs
+# %%
+dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
+dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
 
-    losses.append(np.mean(epoch_losses))
+epoch_train_losses = []
+epoch_val_losses = []
+top1_train_accuracy = []
+top5_train_accuracy = []
+top1_val_accuracy = []
+top5_val_accuracy = []
 
-    # validation loss
-    extended_model.eval();
-    val_loss, val_top1_acc, val_top5_acc = validate_model_classif(batch_size)
-    val_losses.append(val_loss)
-    extended_model.train();
-
-    torch.cuda.empty_cache()
+# Training and Validation Loops
+for epoch in range(num_epochs):
+    extended_model.train()
+    for inputs in tqdm(dataloader):
+        train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, model, optimizer, True, train_gt_masks, classes, class_categories, device)
+    
+        epoch_train_losses.append(train_loss)
+        top1_train_accuracy.append(train_top1_acc)
+        top5_train_accuracy.append(train_top5_acc)
 
     if use_wandb:
-        wandb.log({'epoch classif train loss': np.mean(epoch_losses)})
-        wandb.log({'epoch classif val loss': val_loss})
-    print(f'EPOCH: {epoch}. Training loss: {np.mean(epoch_losses)}.Validation bboxes loss: {np.mean(val_losses)} ')
-    print(f'Top-1 accuracy: {np.mean(top1_accuracy)}. Top-5 accuracy: {np.mean(top5_accuracy)}. Validation Top-1 accuracy: {val_top1_acc}. Validation Top-5 accuracy: {val_top5_acc} ')
-    
-torch.save(extended_model.state_dict(), 'classif_checkpoint.pth')
+        wandb.log({'epoch classif train loss': np.mean(epoch_train_losses)})
+        wandb.log({'epoch top-1 acc': np.mean(top1_train_accuracy)})
+        wandb.log({'epoch top-5 acc': np.mean(top5_train_accuracy)})
 
-if use_wandb:
-    wandb.run.summary["batch_size"] = batch_size
-    wandb.run.summary["num_epochs"] = num_epochs
-    wandb.run.summary["learning rate"] = lr
-    wandb.run.summary["used area for DICE loss"] = 'YES'
-    run.finish()
+    print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_train_losses)}.Top-1 accuracy: {np.mean(top1_train_accuracy)}. Top-5 accuracy: {np.mean(top5_train_accuracy)}')
+
+    extended_model.eval()
+    with torch.no_grad():
+        for inputs in tqdm(dataloader_val):
+            val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, model, None, False, val_gt_masks, classes, class_categories, device)
+
+            epoch_val_losses.append(val_loss)
+            top1_val_accuracy.append(val_top1_acc)
+            top5_val_accuracy.append(val_top5_acc)
+
+        if use_wandb:
+            wandb.log({'epoch classif val loss': np.mean(epoch_val_losses)})
+            wandb.log({'epoch val top-1 acc': np.mean(top1_val_accuracy)})
+            wandb.log({'epoch val top-5 acc': np.mean(top5_val_accuracy)})
+
+        print(f'EPOCH: {epoch}. Validation classes loss: {np.mean(epoch_val_losses)}. Top-1 accuracy: {np.mean(top1_val_accuracy)}. Top-5 accuracy: {np.mean(top5_val_accuracy)}')
 
 # %%
 plt.plot(list(range(len(losses))), losses, label='Training Loss')
