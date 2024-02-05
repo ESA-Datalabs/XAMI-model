@@ -287,7 +287,7 @@ mobile_sam_model.to(device);
 mobile_sam_model.eval(); #!!!
 
 # %%
-use_wandb = True
+use_wandb = False
 
 if use_wandb:
     from datetime import datetime
@@ -539,13 +539,14 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
 
                 top1_img_acc = 0.0
                 top5_img_acc = 0.0
-
+                pred_labels = []
                 for mask_id in image_masks:
                     mask = np.expand_dims(gt_masks[mask_id], axis=-1)
                     mask_input_torch = torch.as_tensor(mask, dtype=torch.float, device=device)
                     mask_input_torch = mask_input_torch / mask_input_torch.max()
                 
                     outputs = model(mask_input_torch * input_image).unsqueeze(0) # also take the image pixels into account
+                    pred_labels.append(class_categories[torch.argmax(outputs).item()])
 
                     # compute weighted sum to balance the classes
                     class_weights = {}
@@ -556,7 +557,7 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
                         class_weights[class_id] = 1.0/sum_app
                 
                     weights_tensor = torch.tensor(list(class_weights.values()), dtype=torch.float).to(device)
-                    loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device), weight=weights_tensor)
+                    loss = F.cross_entropy(outputs, torch.tensor([classes[mask_id]]).to(device)) #, weight=weights_tensor)
                     image_loss[i] += loss
                     torch.cuda.empty_cache()
 
@@ -567,7 +568,6 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
                     # plt.close()
 
                     top1_acc, top5_acc = topk_accuracy(outputs, torch.tensor([classes[mask_id]]).to(device), topk=(1, 5))
-
                     if isinstance(top1_acc, torch.Tensor) and isinstance(top5_acc, torch.Tensor):
                         top1_img_acc += top1_acc.item()
                         top5_img_acc += top5_acc.item()
@@ -578,7 +578,8 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
                 if plot_preds:
                     masks = [gt_masks[mask_id] for mask_id in image_masks]
                     labels = [class_categories[classes[mask_id]] for mask_id in image_masks]
-                    visualize_masks(inputs['image_id'][i], image, masks, labels, colors)
+                    visualize_masks(inputs['image_id'][i], image, masks, labels, colors, is_gt=True)
+                    visualize_masks(inputs['image_id'][i], image, masks, pred_labels, colors, is_gt=False)
 
                 top1_batch_acc += (top1_img_acc / len(image_masks))
                 top5_batch_acc += (top5_img_acc / len(image_masks)) 
@@ -596,84 +597,84 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
             optimizer.step()
 
     return batch_loss.item(), top1_batch_acc, top5_batch_acc
-# %%
+# # %%
 
 
-dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
-dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
+# dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
+# dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
 
-epoch_train_losses, epoch_val_losses = [], []
-top1_train_accs, top5_train_accs = [], []
-top1_val_accs, top5_val_accs = [], []
+# epoch_train_losses, epoch_val_losses = [], []
+# top1_train_accs, top5_train_accs = [], []
+# top1_val_accs, top5_val_accs = [], []
 
-# Training and Validation Loops
-for epoch in range(num_epochs):
-    extended_model.train()
+# # Training and Validation Loops
+# for epoch in range(num_epochs):
+#     extended_model.train()
 
-    train_losses, val_losses = [], []
-    top1_train_accuracy, top5_train_accuracy = [], []
-    top1_val_accuracy, top5_val_accuracy = [], []
+#     train_losses, val_losses = [], []
+#     top1_train_accuracy, top5_train_accuracy = [], []
+#     top1_val_accuracy, top5_val_accuracy = [], []
 
-    for inputs in tqdm(dataloader):
-        train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, extended_model, optimizer, True, train_gt_masks, classes, class_categories, device, plot_preds=False)
+#     for inputs in tqdm(dataloader):
+#         train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, extended_model, optimizer, True, train_gt_masks, classes, class_categories, device, plot_preds=False)
     
-        train_losses.append(train_loss)
-        top1_train_accuracy.append(train_top1_acc)
-        top5_train_accuracy.append(train_top5_acc)
+#         train_losses.append(train_loss)
+#         top1_train_accuracy.append(train_top1_acc)
+#         top5_train_accuracy.append(train_top5_acc)
 
-    epoch_train_losses.append(np.mean(train_losses))
-    top1_train_accs.append(np.mean(top1_train_accuracy))
-    top5_train_accs.append(np.mean(top5_train_accuracy))
+#     epoch_train_losses.append(np.mean(train_losses))
+#     top1_train_accs.append(np.mean(top1_train_accuracy))
+#     top5_train_accs.append(np.mean(top5_train_accuracy))
 
-    if use_wandb:
-        wandb.log({'epoch classif train loss': np.mean(epoch_train_losses)})
-        wandb.log({'epoch top-1 acc': np.mean(top1_train_accuracy)})
-        wandb.log({'epoch top-5 acc': np.mean(top5_train_accuracy)})
+#     if use_wandb:
+#         wandb.log({'epoch classif train loss': np.mean(epoch_train_losses)})
+#         wandb.log({'epoch top-1 acc': np.mean(top1_train_accuracy)})
+#         wandb.log({'epoch top-5 acc': np.mean(top5_train_accuracy)})
 
-    extended_model.eval()
-    with torch.no_grad():
-        for inputs in dataloader_val:
-            val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, extended_model, None, False, val_gt_masks, classes, class_categories, device, plot_preds=False)
+#     extended_model.eval()
+#     with torch.no_grad():
+#         for inputs in dataloader_val:
+#             val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, extended_model, None, False, val_gt_masks, classes, class_categories, device, plot_preds=False)
 
-            val_losses.append(val_loss)
-            top1_val_accuracy.append(val_top1_acc)
-            top5_val_accuracy.append(val_top5_acc)
+#             val_losses.append(val_loss)
+#             top1_val_accuracy.append(val_top1_acc)
+#             top5_val_accuracy.append(val_top5_acc)
 
-        epoch_val_losses.append(np.mean(val_losses))
-        top1_val_accs.append(np.mean(top1_val_accuracy))
-        top5_val_accs.append(np.mean(top5_val_accuracy))
+#         epoch_val_losses.append(np.mean(val_losses))
+#         top1_val_accs.append(np.mean(top1_val_accuracy))
+#         top5_val_accs.append(np.mean(top5_val_accuracy))
 
-        if use_wandb:
-            wandb.log({'epoch classif val loss': np.mean(epoch_val_losses)})
-            wandb.log({'epoch val top-1 acc': np.mean(top1_val_accuracy)})
-            wandb.log({'epoch val top-5 acc': np.mean(top5_val_accuracy)})
+#         if use_wandb:
+#             wandb.log({'epoch classif val loss': np.mean(epoch_val_losses)})
+#             wandb.log({'epoch val top-1 acc': np.mean(top1_val_accuracy)})
+#             wandb.log({'epoch val top-5 acc': np.mean(top5_val_accuracy)})
     
-    print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_train_losses)}.   Top-1 accuracy: {np.mean(top1_train_accuracy)}. Top-5 accuracy: {np.mean(top5_train_accuracy)}')
-    print(f'EPOCH: {epoch}. Validation classes loss: {np.mean(epoch_val_losses)}.   Top-1 accuracy: {np.mean(top1_val_accuracy)}.   Top-5 accuracy: {np.mean(top5_val_accuracy)}')
+#     print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_train_losses)}.   Top-1 accuracy: {np.mean(top1_train_accuracy)}. Top-5 accuracy: {np.mean(top5_train_accuracy)}')
+#     print(f'EPOCH: {epoch}. Validation classes loss: {np.mean(epoch_val_losses)}.   Top-1 accuracy: {np.mean(top1_val_accuracy)}.   Top-5 accuracy: {np.mean(top5_val_accuracy)}')
 
-# %%
-torch.save(extended_model.state_dict(), './weights/classif_checkpoint.pth')
+# # %%
+# torch.save(extended_model.state_dict(), './weights/classif_checkpoint.pth')
 
-# %%
-plt.plot(list(range(len(epoch_train_losses))), epoch_train_losses, label='Training Loss')
-plt.plot(list(range(len(epoch_val_losses))), epoch_val_losses, label='Validation Loss')
-plt.title('Mean epoch loss \n mask with sigmoid')
-plt.xlabel('Epoch Number')
-plt.ylabel('Loss')
-plt.legend()
-plt.savefig('./plots/loss_train_classif.png')
-plt.show()
-plt.close()
+# # %%
+# plt.plot(list(range(len(epoch_train_losses))), epoch_train_losses, label='Training Loss')
+# plt.plot(list(range(len(epoch_val_losses))), epoch_val_losses, label='Validation Loss')
+# plt.title('Mean epoch loss \n mask with sigmoid')
+# plt.xlabel('Epoch Number')
+# plt.ylabel('Loss')
+# plt.legend()
+# plt.savefig('./plots/loss_train_classif.png')
+# plt.show()
+# plt.close()
 
 # %%
 extended_model.load_state_dict(torch.load('./weights/classif_checkpoint.pth'))
 extended_model.eval()
 
 # inference on the test set
-dataset_test = ImageDataset(test_image_paths, test_bboxes, test_gt_masks, transform_image) 
-dataloader_test = DataLoader(dataset_test, batch_size=batch_size, shuffle=True)
+dataset_2 = ImageDataset(training_image_paths[2:30], train_bboxes, train_gt_masks, transform_image) 
+dataloader_2 = DataLoader(dataset_2, batch_size=28, shuffle=True)
 
-epoch_test_losses = []
+test_losses = []
 top1_test_accuracy = []
 top5_test_accuracy = []
 
@@ -689,10 +690,10 @@ base_colors = [
     (0, 24, 255),
     (0, 184, 235),
     (134, 34, 255),
-    (234, 206, 19),
+    (199, 252, 0),
     (255, 129, 0),
     (254, 0, 87),
-    (199, 252, 0),
+    (0, 250, 62),
     
     (255, 0, 255),  # Magenta
     (191, 255, 0),   # Lime
@@ -713,7 +714,7 @@ base_colors = [
     (255, 255, 128),# Light Yellow
     (255, 128, 255),# Light Magenta
     (128, 255, 255),# Light Cyan
-]
+]∏
 
 num_colors_needed = len(class_categories.keys())
 colors = {class_categories[class_id]: base_colors[i] for i, class_id in enumerate(class_categories.keys())}
@@ -723,17 +724,17 @@ reload(dataset_utils)
 from dataset_utils import *
 
 with torch.no_grad():
-    for inputs in dataloader_test:
-        test_loss, test_top1_acc, test_top5_acc = process_batch(inputs, extended_model, None, False, test_gt_masks, classes, class_categories, device, plot_preds=True)
+    for inputs in dataloader_2:
+        test_loss, test_top1_acc, test_top5_acc = process_batch(inputs, extended_model, None, False, train_gt_masks, classes, class_categories, device, plot_preds=True)
 
-        epoch_test_losses.append(test_loss)
+        test_losses.append(test_loss)
         top1_test_accuracy.append(test_top1_acc)
         top5_test_accuracy.append(test_top5_acc)
 
-
-    if use_wandb:
-        wandb.log({'epoch classif test loss': np.mean(epoch_test_losses)})
-        wandb.log({'epoch test top-1 acc': np.mean(top1_test_accuracy)})
-        wandb.log({'epoch test top-5 acc': np.mean(top5_test_accuracy)})
+print('Test loss:', np.mean(test_losses))
+print('Top-1 Accuracy:', np.mean(top1_test_accuracy))
+print('Top-5 Accuracy:', np.mean(top5_test_accuracy))
 
 # %%
+
+dataset
