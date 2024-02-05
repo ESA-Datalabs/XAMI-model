@@ -1,3 +1,4 @@
+from tkinter import font
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
@@ -50,7 +51,47 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-def visualize_masks(image_path, image, masks, labels, colors, alpha=0.4):
+def draw_label(img, text, pos, bg_color, alpha=0.8):
+
+    if 'read-out-streak' in text:
+        text = 'ROS'
+    if 'smoke' in text:
+        text = 'SR'
+    if 'central' in text:
+        text = 'CR'
+
+    if 'loop' in text:
+        text = 'SG'
+    if 'scattered' in text:
+        text = 'scattered'
+        
+    font_face = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 1
+    color = (0, 0, 0)  # Black text
+    thickness = cv2.FILLED
+    margin = 0
+
+    txt_size = cv2.getTextSize(text, font_face, scale, 1)
+    txt_width, txt_height = txt_size[0][0], txt_size[0][1]
+
+    # Position of the rectangle
+    rect_start = (pos[0], pos[1] - txt_height - margin * 2)
+    rect_end = (pos[0] + txt_width + margin * 2, pos[1])
+
+    # Create a transparent overlay for the rectangle
+    overlay = img.copy()
+
+    if not (text.endswith('star') or text.endswith('star')):
+        cv2.rectangle(overlay, rect_start, rect_end, bg_color, thickness)
+
+        # Blend the overlay with the original image
+        cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
+
+        # Draw the text on the original image
+        text_pos = (pos[0] + margin * 2, pos[1] - margin)
+        cv2.putText(img, text, text_pos, font_face, scale, color, 1, cv2.LINE_AA)
+
+def visualize_masks(image_path, image, masks, labels, colors, alpha=0.4, is_gt=True):
     """
     Visualize masks on an image with contours and dynamically sized text labels with a background box.
 
@@ -62,65 +103,61 @@ def visualize_masks(image_path, image, masks, labels, colors, alpha=0.4):
     - colors: A list of colors corresponding to each label.
     - alpha: Transparency of masks.
     """
-    # Ensure the image is in RGB format
-    if len(image.shape) == 2 or image.shape[2] == 1:
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-    elif image.shape[2] == 4:
-        image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGB)
+    # Pad the image (when labels are too big and they appear at image corners)
+    pad_size = 20  # Padding size
+    if len(image.shape) == 3:
+        padded_image = cv2.copyMakeBorder(image, pad_size, pad_size, pad_size, pad_size,
+                                          cv2.BORDER_CONSTANT, value=[255,255,255])
+    else:  # For grayscale images
+        padded_image = cv2.copyMakeBorder(image, pad_size, pad_size, pad_size, pad_size,
+                                          cv2.BORDER_CONSTANT, value=255)
+
+    # Work on a copy of the padded image
+    temp_image = padded_image.copy()
+
+    # Ensure the temp_image is in RGB format
+    if len(temp_image.shape) == 2 or temp_image.shape[2] == 1:
+        temp_image = cv2.cvtColor(temp_image, cv2.COLOR_GRAY2RGB)
+    elif temp_image.shape[2] == 4:
+        temp_image = cv2.cvtColor(temp_image, cv2.COLOR_BGRA2RGB)
 
     # Create a color overlay
-    overlay = image.copy()
+    overlay = temp_image.copy()
     for mask, label in zip(masks, labels):
+        # Adjust mask for padding
+        padded_mask = cv2.copyMakeBorder(mask, pad_size, pad_size, pad_size, pad_size,
+                                         cv2.BORDER_CONSTANT, value=0)
+
         color = colors[label]
-        # Apply mask to the overlay
-        overlay[mask == 1] = [color[0], color[1], color[2]]
+        bg_color = (int(color[0]), int(color[1]), int(color[2]))  # Background color
 
-        # Find contours
-        contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        overlay[padded_mask == 1] = [color[0], color[1], color[2]]
 
-        # Draw contours on the original image for better contrast
+        contours, _ = cv2.findContours(padded_mask.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
         contour_color = [c // 4 for c in color]  # Darker shade of the mask color
-        cv2.drawContours(image, contours, -1, contour_color, 2)  # Adjust thickness as needed
+        cv2.drawContours(temp_image, contours, -3, contour_color, 2) 
 
-        # Optionally, add label text near the contour
         if contours:
-            # Calculate the area of the mask to determine the font size
-            area = np.sum(mask)
-            font_scale = 0.7 + (area / (image.shape[0] * image.shape[1])) * 2  # Adjust scaling factor as needed
-            
-            # Cap the font_scale to a maximum value if necessary
-            font_scale = min(font_scale, 1.0)
-            
-            # Choose a font
-            font = cv2.FONT_HERSHEY_COMPLEX_SMALL
-            
-            # Get the size of the text box
-            ((text_width, text_height), _) = cv2.getTextSize(label, font, font_scale, 1)
-            
-            # Calculate the box coordinates
-            text_x = contours[0][0][0][0]
-            text_y = contours[0][0][0][1] - 7  # Shift text up by 7 pixels
-            box_coords = ((text_x, text_y + 7), (text_x + text_width, text_y - text_height - 7))
-            
-            # Draw the text background box
-            image = cv2.rectangle(image, box_coords[0], box_coords[1], color, cv2.FILLED)
-            
-            # Ensure text is within image bounds
-            text_x = max(0, min(text_x, image.shape[1] - text_width))
-            text_y = max(0, min(text_y, image.shape[0]))
-            
-            # Place text on the image
-            cv2.putText(image, label, (text_x, text_y), font, font_scale, [0, 0, 0], 1)  # Black text
+            c = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(c)
+            draw_label(temp_image, label, (x, y), bg_color)
 
-    # Blend the original image and the overlay
-    cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+    cv2.addWeighted(overlay, alpha, temp_image, 1 - alpha, 0, temp_image)
 
-    # Display the image
-    plt.imshow(image)
-    plt.title(f'Predicted classes \n{image_path.split(".")[0]}')
+    # Visualization code remains the same
+    plt.figure(figsize=(50, 50)) 
+    plt.imshow(temp_image)
+    if is_gt:
+        plt.title(f'Ground truth classes \n{image_path.split(".")[0]}', fontsize=100)
+        output_file= './plots/'+image_path.split(".")[0]+'_gt.png'
+    else:
+        plt.title(f'Predicted classes \n{image_path.split(".")[0]}', fontsize=100)
+        output_file= './plots/'+image_path.split(".")[0]+'_pred.png'
+
     plt.axis('off')
     plt.show()
-    plt.imsave('./plots/'+image_path, image)
+    plt.imsave(output_file, temp_image, dpi=1000)
     plt.close()
 
 def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
@@ -215,13 +252,25 @@ def augment_and_show(aug, image, masks=None, bboxes=[], categories=[], category_
 
     augmented = aug(image=image, masks=masks, bboxes=bboxes, category_id=categories)
     # augmented = align_masks_and_bboxes(augmented)
-    min_len = min(len(augmented['masks']), len(augmented['bboxes']))
-    # print('min_len:', min_len)
-    augmented['masks'] = augmented['masks'][:min_len]
-    augmented['bboxes'] = augmented['bboxes'][:min_len]
+    # min_len = min(len(augmented['masks']), len(augmented['bboxes']))
+    # # print('min_len:', min_len)
+    # augmented['masks'] = augmented['masks'][:min_len]
+    # augmented['bboxes'] = augmented['bboxes'][:min_len]
 
     # print(len(augmented['masks']), len(augmented['bboxes']), len(augmented['category_id']))
+    # Remove empty masks
 
+    # if len(augmented['masks']) != len(augmented['bboxes']):
+    #     print(f"❗The number of masks is different than the number of bboxes. #masks = {len(augmented['masks'])}, #bboxes: {len(augmented['bboxes'])}, # cats: {len(augmented['category_id'])}")
+
+    #     print('non empty masks', len([mask for mask in augmented['masks'] if np.any(mask)]))
+    #     print('non empty bboxes', len([bbox for bbox in augmented['bboxes']]))
+    #     print('non empty cats', len([catt for catt in augmented['category_id']]))
+
+    augmented['masks'] = [mask for mask in augmented['masks'] if np.any(mask)]
+    
+        # show_=True
+        
     if show_:
             
         image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2RGB)
@@ -283,7 +332,8 @@ def update_dataset_with_augms(augmented_set: Dict[str, Any],
                               new_filename: str, bbox_coords: Dict[str, Any], 
                               ground_truth_masks: Dict[str, Any], 
                               image_paths: List[str],
-                              classes: Dict[str, Any]):
+                              classes: Dict[str, Any],
+                              **kwargs):
     """
     Updates the dataset with augmented images, masks, and bounding box coordinates.
 
@@ -297,15 +347,6 @@ def update_dataset_with_augms(augmented_set: Dict[str, Any],
     Returns:
         None (the values are updated through pass by reference)
     """
-    # Remove empty masks
-    # print('Initial number of masks:', len(augmented_set['masks']), ' Number of bboxes:', len(augmented_set['bboxes']))
-
-    # if len(augmented_set['masks']) != len(augmented_set['bboxes']):
-        # print(f"❗The number of masks is different than the number of bboxes. #masks = {len(augmented_set['masks'])}, #bboxes: {len(augmented_set['bboxes'])}")
-
-    # augmented_set['masks'] = [mask for mask in augmented_set['masks'] if np.any(mask)]
-
-    # Reduce masks/bboxes to use the same length (this is not necessary if bboxes are generated from masks)
 
     # Save the new image
     cv2.imwrite(new_filename, augmented_set['image'])
@@ -323,9 +364,3 @@ def update_dataset_with_augms(augmented_set: Dict[str, Any],
         bbox_coords[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = xyxy_bbox
         ground_truth_masks[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = augmented_set['masks'][mask_i]
         classes[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = augmented_set['category_id'][mask_i]
-
-        if not np.any(augmented_set['masks'][mask_i]):
-            print(f'{new_filename.split("/")[-1]}_mask{mask_i}', 'is empty')
-            print('mask_i:', mask_i, 'mask:', augmented_set['masks'][mask_i].shape, 'bbox:', xyxy_bbox)
-            import sys
-            sys.exit()

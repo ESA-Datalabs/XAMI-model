@@ -23,3 +23,7 @@ ft_MobileSAM_dataset_old.py
 ft_EVA.ipynb
 ft_Detectron2_Instance.ipynb
 ft_MobileSAM_dataset.ipynb
+roboflow_classif.ipynb
+ft_MobileSAM_and_classif.py
+ft_MobileSAM_dataset.ipynb
+check_sam_fine-tuning_on_usual_images.ipynb

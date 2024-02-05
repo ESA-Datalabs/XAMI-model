@@ -1,7 +1,9 @@
+from tkinter import font
 import traceback
 import numpy as np
 import cv2
 from PIL import Image
+from psutil import disk_partitions
 import supervision as sv
 from astropy.io import fits
 import matplotlib.pyplot as plt
@@ -14,7 +16,7 @@ def show_mask(mask, ax, random_color=False):
     if random_color:
         color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
     else:
-        color = np.array([30/255, 144/255, 255/255, 0.6])
+        color = np.array([65/255, 174/255, 255/255, 0.4]) 
     h, w = mask.shape[-2:]
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
     ax.imshow(mask_image)
@@ -24,7 +26,7 @@ def show_masks(masks, ax, random_color=False):
         if random_color:
             color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
         else:
-            color = np.array([30/255, 144/255, 255/255, 0.6])
+                color = np.array([30/255, 144/255, 255/255, 0.6])
         h, w = mask.shape[-2:]
         mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
         ax.imshow(mask_image)
@@ -299,13 +301,28 @@ def SAM_predictor(AMG, sam, IMAGE_PATH, mask_on_negative = None, img_grid_points
         # image = Image.fromarray(annotated_image)
         # image.save(output_file)
     
-        fig, axs = plt.subplots(1, 3, figsize=(15, 5)) 
+        annotated_image = annotated_image * (image_rgb>0).astype(float)
+        if annotated_image.max() <= 1.0:
+            annotated_image *= 255
+        
+        annotated_image = annotated_image.astype(np.uint8)
+        
+        # image = Image.fromarray(annotated_image)
 
-        axs[0].imshow(image_bgr)
-        axs[0].set_title(f'source image {IMAGE_PATH.split("/")[-1]}')
+        image_rgb = (image_rgb)*(image_rgb>0).astype(float)
+        if image_rgb.max() <= 1.0:
+            image_rgb *= 255
+        
+        # convert the type to 'uint8' (unsigned 8-bit integer)
+        image_rgb = image_rgb.astype(np.uint8)
+
+        fig, axs = plt.subplots(1, 3, figsize=(30, 10)) 
+
+        axs[0].imshow(image_rgb)
+        axs[0].set_title(f'source image {IMAGE_PATH.split("/")[-1].split(".")[0]}', fontsize=30)
 
         axs[1].imshow(annotated_image)
-        axs[1].set_title(f'original SAM segmented image')
+        axs[1].set_title(f'original SAM segmented image', fontsize=30)
 
         if img_grid_points is not None:
             axs[2].imshow(cv2.cvtColor(cv2.imread(IMAGE_PATH), cv2.COLOR_BGR2RGB))
@@ -314,7 +331,8 @@ def SAM_predictor(AMG, sam, IMAGE_PATH, mask_on_negative = None, img_grid_points
         else:
             fig.delaxes(axs[2])
 
-        plt.tight_layout()
+        # plt.tight_layout()
+        plt.savefig('segmented_orig_SAM.png', dpi=500)
         plt.show()
         plt.close() 
     except Exception as e:
