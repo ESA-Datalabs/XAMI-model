@@ -5,7 +5,7 @@ yolov8n.pt
 *.pth
 *.pth
 *.json
-/xmm_om_images_v4-contrast-512-1/*
+/xmm_om_images*
 /weight/*
 /weights/*  
 /plots/*
@@ -27,3 +27,4 @@ roboflow_classif.ipynb
 ft_MobileSAM_and_classif.py
 ft_MobileSAM_dataset.ipynb
 check_sam_fine-tuning_on_usual_images.ipynb
+ft_MobileSAM_and_classif.ipynb
