@@ -28,3 +28,5 @@ ft_MobileSAM_and_classif.py
 ft_MobileSAM_dataset.ipynb
 check_sam_fine-tuning_on_usual_images.ipynb
 ft_MobileSAM_and_classif.ipynb
+ft_MobileSAM_and_classif_0_gradients.ipynb
+*.csv

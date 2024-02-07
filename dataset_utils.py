@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import cv2
 import random
 from typing import Dict, List, Any
+import numpy as np
+import pycocotools.mask as maskUtils
 
 BOX_COLOR = (255, 0, 0) 
 TEXT_COLOR = (0, 0, 255) 
@@ -176,49 +178,65 @@ def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
     For each annotation, it keeps it only if its bounding box size is significant (h,w) > (5,5).
     """
     result_masks, bbox_coords, result_class = {}, {}, {}
-	
+    k=1
     class_categories = {data_in['categories'][a]['id']:data_in['categories'][a]['name'] for a in range(len(data_in['categories']))}
 
-    if image_key is not None:
-        image_id = None
-        for img_id in range(len(data_in['images'])):
-            if data_in['images'][img_id]['file_name'] == image_key:
-                image_id = img_id 
-                
-        temp_img = cv2.imread(input_dir+data_in['images'][img_id]['file_name'])
-        temp_img = cv2.cvtColor(temp_img, cv2.COLOR_BGR2RGB)
-        h_img, w_img = temp_img.shape[0], temp_img.shape[1]
-        del temp_img
-        
-        masks = [data_in['annotations'][a] for a in range(len(data_in['annotations'])) if data_in['annotations'][a]['image_id'] == image_id]
-        for i in range(len(masks)):
-            xyhw = masks[i]['bbox']
-            if xyhw[2]>5 or xyhw[3]>5: # ignore masks with an (h,w) < (5,5)
-                points = masks[i]['segmentation'][0]
-                mask = create_mask(points, (h_img, w_img)) # Roboflow segmentations are polygon points, and are be converted to masks
-                result_masks[f'{image_key}_mask{i}'] = mask
-                bbox_coords[f'{image_key}_mask{i}'] = [xyhw[0], xyhw[1], xyhw[2]+ xyhw[0], xyhw[3]+xyhw[1]]
-        return result_masks, bbox_coords
-
     # for all images in set
-    for im in data_in['images']:        
+    # data_in['images']= data_in['images'][:20] # !!!!!!!!!!!
+    for im in data_in['images']:  
+
         masks = [data_in['annotations'][a] for a in range(len(data_in['annotations'])) if data_in['annotations'][a]['image_id'] == im['id']]
+        temp_img = cv2.imread(input_dir+im["file_name"])
+        temp_img = cv2.cvtColor(temp_img, cv2.COLOR_BGR2RGB)
+
         classes = [data_in['annotations'][a]['category_id'] for a in range(len(data_in['annotations'])) if data_in['annotations'][a]['image_id'] == im['id']]
         for i in range(len(masks)):
             xyhw = masks[i]['bbox']
             if xyhw[2]>5 or xyhw[3]>5: # ignore masks with an (h,w) < (5,5)
-                points = masks[i]['segmentation'][0]
-                temp_img = cv2.imread(input_dir+im["file_name"])
-                temp_img = cv2.cvtColor(temp_img, cv2.COLOR_BGR2RGB)
-                h_img, w_img = temp_img.shape[0], temp_img.shape[1]
-                del temp_img
-        
-                mask = create_mask(points, (h_img, w_img)) # Roboflow segmentations are polygon points, and are be converted to masks
-                result_masks[f'{im["file_name"]}_mask{i}'] = mask
-                bbox_coords[f'{im["file_name"]}_mask{i}'] = [xyhw[0], xyhw[1], xyhw[2]+ xyhw[0], xyhw[3]+xyhw[1]]
-                result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
+
+                segmentation = masks[i]['segmentation']
+                if isinstance(segmentation, list):
+                    if len(segmentation) > 0 and isinstance(segmentation[0], list):
+                        points = segmentation[0]
+                        h_img, w_img = temp_img.shape[:2]
+
+                        mask = create_mask(points, (h_img, w_img)) # COCO segmentations are polygon points, and must be converted to masks
+                        bbox = mask_to_bbox(mask)
+                        result_masks[f'{im["file_name"]}_mask{i}'] = mask
+                        bbox_coords[f'{im["file_name"]}_mask{i}'] = bbox
+                        result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
+
+                elif isinstance(segmentation, dict):
+                    # Handle RLE segmentation
+                    if 'counts' in segmentation and 'size' in segmentation:
+                        rle = maskUtils.frPyObjects([segmentation], segmentation['size'][0], segmentation['size'][1])
+                        mask = maskUtils.decode(rle)
+                        # result_masks[f'{im["file_name"]}_mask{i}'] = mask
+                        # bbox_coords[f'{im["file_name"]}_mask{i}'] = [xyhw[0], xyhw[1], xyhw[2]+ xyhw[0], xyhw[3]+xyhw[1]]
+                        # result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
+                        # Now `mask` is a binary mask of shape `(height, width)` where `segmentation['size']` = [height, width]
+                else:
+                    print(f"Unexpected segmentation format for mask {i}: {type(segmentation)}")
+                    
+        del temp_img
+        k+=1
 	
     return result_masks, bbox_coords, result_class, class_categories
+
+
+def mask_to_bbox(mask):
+    """
+    Calculate the bounding box from the mask.
+    mask: binary mask of shape (height, width) with non-zero values indicating the object
+    Returns: bbox in the format [x_min, y_min, x_max, y_max]
+    """
+
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+    y_min, y_max = np.where(rows)[0][[0, -1]]
+    x_min, x_max = np.where(cols)[0][[0, -1]]
+
+    return [x_min, y_min, x_max, y_max]
 
 def create_mask(points, image_size):
     polygon = [(points[i], points[i+1]) for i in range(0, len(points), 2)]
