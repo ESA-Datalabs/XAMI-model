@@ -32,3 +32,4 @@ ft_MobileSAM_and_classif_0_gradients.ipynb
 *.csv
 .lsp_symlink
 output
+./old_fine-tuning_files/*
