@@ -193,30 +193,29 @@ def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
         for i in range(len(masks)):
             xyhw = masks[i]['bbox']
             if xyhw[2]>5 or xyhw[3]>5: # ignore masks with an (h,w) < (5,5)
-
-                segmentation = masks[i]['segmentation']
-                if isinstance(segmentation, list):
-                    if len(segmentation) > 0 and isinstance(segmentation[0], list):
-                        points = segmentation[0]
-                        h_img, w_img = temp_img.shape[:2]
-
-                        mask = create_mask(points, (h_img, w_img)) # COCO segmentations are polygon points, and must be converted to masks
-                        bbox = mask_to_bbox(mask)
-                        result_masks[f'{im["file_name"]}_mask{i}'] = mask
-                        bbox_coords[f'{im["file_name"]}_mask{i}'] = bbox
-                        result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
-
-                elif isinstance(segmentation, dict):
-                    # Handle RLE segmentation
-                    if 'counts' in segmentation and 'size' in segmentation:
-                        rle = maskUtils.frPyObjects([segmentation], segmentation['size'][0], segmentation['size'][1])
-                        mask = maskUtils.decode(rle)
-                        # result_masks[f'{im["file_name"]}_mask{i}'] = mask
-                        # bbox_coords[f'{im["file_name"]}_mask{i}'] = [xyhw[0], xyhw[1], xyhw[2]+ xyhw[0], xyhw[3]+xyhw[1]]
-                        # result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
-                        # Now `mask` is a binary mask of shape `(height, width)` where `segmentation['size']` = [height, width]
-                else:
-                    print(f"Unexpected segmentation format for mask {i}: {type(segmentation)}")
+                if 'loop' in class_categories[classes[i]] or 'ring' in class_categories[classes[i]]: #!!!!!
+	                segmentation = masks[i]['segmentation']
+	                if isinstance(segmentation, list):
+	                    if len(segmentation) > 0 and isinstance(segmentation[0], list):
+	                        points = segmentation[0]
+	                        h_img, w_img = temp_img.shape[:2]
+	                        mask = create_mask(points, (h_img, w_img)) # COCO segmentations are polygon points, and must be converted to masks
+	                        bbox = mask_to_bbox(mask)
+	                        result_masks[f'{im["file_name"]}_mask{i}'] = mask
+	                        bbox_coords[f'{im["file_name"]}_mask{i}'] = bbox
+	                        result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
+	
+	                elif isinstance(segmentation, dict):
+	                    # Handle RLE segmentation
+	                    if 'counts' in segmentation and 'size' in segmentation:
+	                        rle = maskUtils.frPyObjects([segmentation], segmentation['size'][0], segmentation['size'][1])
+	                        mask = maskUtils.decode(rle)
+	                        # result_masks[f'{im["file_name"]}_mask{i}'] = mask
+	                        # bbox_coords[f'{im["file_name"]}_mask{i}'] = [xyhw[0], xyhw[1], xyhw[2]+ xyhw[0], xyhw[3]+xyhw[1]]
+	                        # result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
+	                        # Now `mask` is a binary mask of shape `(height, width)` where `segmentation['size']` = [height, width]
+            else:
+                print(f"Ignore xyhw {xyhw}. {class_categories[classes[i]]}. {im['file_name']}")
                     
         del temp_img
         k+=1

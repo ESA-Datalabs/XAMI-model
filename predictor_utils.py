@@ -292,7 +292,7 @@ def SAM_predictor(AMG, sam, IMAGE_PATH, mask_on_negative = None, img_grid_points
         
         if mask_on_negative is not None:
             sam_result = remove_masks(sam_result=sam_result, mask_on_negative=mask_on_negative.astype(int), 
-                                      threshold=100, remove_big_masks=True, img_shape=image_rgb.shape)
+                                      threshold=512*512/2, remove_big_masks=True, img_shape=image_rgb.shape)
             # output_file = IMAGE_PATH.replace("scaled_raw", "segmented_SAM").replace(".png", "_segmented_removed_negative.png")
 
         mask_annotator = sv.MaskAnnotator(color_lookup=sv.ColorLookup.INDEX)
@@ -316,25 +316,25 @@ def SAM_predictor(AMG, sam, IMAGE_PATH, mask_on_negative = None, img_grid_points
         # convert the type to 'uint8' (unsigned 8-bit integer)
         image_rgb = image_rgb.astype(np.uint8)
 
-        fig, axs = plt.subplots(1, 3, figsize=(30, 10)) 
+        # fig, axs = plt.subplots(1, 3, figsize=(30, 10)) 
 
-        axs[0].imshow(image_rgb)
-        axs[0].set_title(f'source image {IMAGE_PATH.split("/")[-1].split(".")[0]}', fontsize=30)
+        # axs[0].imshow(image_rgb)
+        # axs[0].set_title(f'source image {IMAGE_PATH.split("/")[-1].split(".")[0]}', fontsize=30)
 
-        axs[1].imshow(annotated_image)
-        axs[1].set_title(f'original SAM segmented image', fontsize=30)
+        # axs[1].imshow(annotated_image)
+        # axs[1].set_title(f'original SAM segmented image', fontsize=30)
 
-        if img_grid_points is not None:
-            axs[2].imshow(cv2.cvtColor(cv2.imread(IMAGE_PATH), cv2.COLOR_BGR2RGB))
-            axs[2].scatter(img_grid_points[0][:, 0]*255, img_grid_points[0][:, 1]*255, s=10, c='r', marker='o')
-            axs[2].set_title('Grid points as prompts')
-        else:
-            fig.delaxes(axs[2])
+        # if img_grid_points is not None:
+        #     axs[2].imshow(cv2.cvtColor(cv2.imread(IMAGE_PATH), cv2.COLOR_BGR2RGB))
+        #     axs[2].scatter(img_grid_points[0][:, 0]*255, img_grid_points[0][:, 1]*255, s=10, c='r', marker='o')
+        #     axs[2].set_title('Grid points as prompts')
+        # else:
+        #     fig.delaxes(axs[2])
 
-        # plt.tight_layout()
-        plt.savefig('segmented_orig_SAM.png', dpi=500)
-        plt.show()
-        plt.close() 
+        # # plt.tight_layout()
+        # plt.savefig('segmented_orig_SAM.png', dpi=500)
+        # plt.show()
+        # plt.close() 
     except Exception as e:
         print("Exception:\n", e)
         traceback.print_exc()

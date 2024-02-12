@@ -37,7 +37,8 @@ def plot_polygon(polygon, image):
         ax.set_ylim(255, 0)
         
         plt.show()
-    
+
+# works well for COCO to VOC annotations conversion
 def create_annotation(filename, width, height, depth, objects):
     annotation = ET.Element('annotation')
 
@@ -71,8 +72,53 @@ def create_annotation(filename, width, height, depth, objects):
         polygon = ET.SubElement(object_elem, 'polygon')
         for i in range(0, len(obj['segmentations']), 2):
 
-            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i+1]+1.5)
-            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i]+1.5)  
+            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i]+2) # + n this is added for alignemnt
+            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i+1]+2)  # + n this is added for alignemnt
+    xml_str = ET.tostring(annotation, encoding='utf-8')
+
+    dom = minidom.parseString(xml_str)
+    pretty_xml = dom.toprettyxml()
+
+    with open(f'{filename.replace(".jpg", ".xml")}', 'w') as f:
+        f.write(pretty_xml)
+    print(" Check the coorrdinates! ")
+
+# works well for Segment Anything annotations
+def create_annotation_SAM(filename, width, height, depth, objects):
+    annotation = ET.Element('annotation')
+
+    ET.SubElement(annotation, "folder").text = ''
+    ET.SubElement(annotation, 'filename').text = filename
+    ET.SubElement(annotation, 'path').text = filename
+    source = ET.SubElement(annotation, 'source')
+    ET.SubElement(source, 'database').text = 'roboflow.com'
+
+    size = ET.SubElement(annotation, 'size')
+    ET.SubElement(size, 'width').text = str(width)
+    ET.SubElement(size, 'height').text = str(height)
+    ET.SubElement(size, 'depth').text = str(depth)
+
+    ET.SubElement(annotation, 'segmented').text = '0'
+
+    for obj in objects:
+        object_elem = ET.SubElement(annotation, 'object')
+        ET.SubElement(object_elem, 'name').text = obj['name']
+        ET.SubElement(object_elem, 'pose').text = 'Unspecified'
+        ET.SubElement(object_elem, 'truncated').text = '0'
+        ET.SubElement(object_elem, 'difficult').text = '0'
+        ET.SubElement(object_elem, 'occluded').text = '0'
+
+        bndbox = ET.SubElement(object_elem, 'bndbox')
+        ET.SubElement(bndbox, 'xmin').text = str(obj['bbox'][0])
+        ET.SubElement(bndbox, 'ymin').text = str(obj['bbox'][1])
+        ET.SubElement(bndbox, 'xmax').text = str(obj['bbox'][2]+obj['bbox'][0])
+        ET.SubElement(bndbox, 'ymax').text = str(obj['bbox'][3]+obj['bbox'][1])
+        
+        polygon = ET.SubElement(object_elem, 'polygon')
+        for i in range(0, len(obj['segmentations']), 2):
+
+            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i+1]+1.5) # + n this is added for alignemnt
+            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i]+1.5)  # + n this is added for alignemnt
     xml_str = ET.tostring(annotation, encoding='utf-8')
 
     dom = minidom.parseString(xml_str)
@@ -80,3 +126,4 @@ def create_annotation(filename, width, height, depth, objects):
 
     with open(f'{filename.replace(".png", ".xml")}', 'w') as f:
         f.write(pretty_xml)
+    print(" Check the coorrdinates! ")
