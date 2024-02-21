@@ -320,3 +320,213 @@ def clahe_algo_image(IMAGE_PATH, clipLimit=3.0, tileGridSize=(8,8)):
     plt.close()
 
     return final_img
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def enhance_contrast_with_adaptive_thresholding(IMAGE_PATH, clipLimit=3.0, tileGridSize=(8,8)):
+    image = cv2.imread(IMAGE_PATH)
+    image_bw = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Adaptive thresholding to identify faint regions
+    # cv2.ADAPTIVE_THRESH_MEAN_C or cv2.ADAPTIVE_THRESH_GAUSSIAN_C can be used
+    adaptive_thresh = cv2.adaptiveThreshold(image_bw, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                             cv2.THRESH_BINARY_INV, 11, 2)
+    
+    # Apply CLAHE to the original grayscale image based on the adaptive threshold mask
+    clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=tileGridSize)
+    clahe_img = clahe.apply(image_bw)
+    
+    # Masking: Use the adaptive threshold as a mask to blend the original and CLAHE images
+    final_img = np.where(adaptive_thresh == 255, clahe_img, image_bw)
+
+    plt.figure(figsize=(20, 10))
+    plt.subplot(1, 3, 1)
+    plt.imshow(image_bw, cmap='gray')
+    plt.title('Original Image')
+    
+    plt.subplot(1, 3, 2)
+    plt.imshow(adaptive_thresh, cmap='gray')
+    plt.title('Adaptive Threshold Mask')
+    
+    plt.subplot(1, 3, 3)
+    plt.imshow(final_img, cmap='gray')
+    plt.title('Enhanced Image')
+    
+    plt.show()
+
+    return final_img
+
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
+def clahe_algo_image_improved(IMAGE_PATH, clipLimit=1.0, tileGridSize=(4,4), bright_threshold=200):
+    image = cv2.imread(IMAGE_PATH.replace(".fits", ".png"))
+    image_bw = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Mask for bright regions to avoid enhancing these
+    bright_mask = image_bw > bright_threshold
+    faint_mask = ~bright_mask
+
+    final_img = image_bw.copy()
+    
+    # Apply CLAHE only to faint regions
+    clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=tileGridSize)
+    faint_img = clahe.apply(image_bw[faint_mask])
+    final_img[faint_mask] = faint_img.flatten()
+
+    # Apply a simple threshold to the original image for comparison
+    _, ordinary_img = cv2.threshold(image_bw, 155, 255, cv2.THRESH_BINARY)
+    
+    plt.figure(figsize=(30, 10))
+    plt.subplot(1, 4, 1)
+    plt.imshow(image_bw, cmap='viridis')
+    plt.title(f'Original Image {IMAGE_PATH.split("/")[-1]}')
+    
+    plt.subplot(1, 4, 2)
+    plt.imshow(ordinary_img, cmap='viridis')
+    plt.title('Ordinary Threshold')
+    
+    plt.subplot(1, 4, 3)
+    plt.imshow(final_img, cmap='viridis')
+    plt.title('CLAHE Image')
+    
+    plt.subplot(1, 4, 4)
+    plt.hist(final_img[final_img>0], bins=100)
+    plt.title('CLAHE Image histogram (nonnegative pixels)')
+    plt.show()
+    plt.close()
+
+    return final_img
+
+from astropy.stats import sigma_clipped_stats
+from astropy.io import fits
+from astropy.visualization import simple_norm
+import matplotlib.pyplot as plt
+import numpy as np
+import cv2
+
+def enhance_astronomical_image(image_path, clipLimit=3.0, tileGridSize=(16,16)):
+    with fits.open(image_path) as hdul:
+        image_data = hdul[0].data
+    
+    # Estimate the background
+    mean, median, std = sigma_clipped_stats(image_data, sigma=3.0)
+    image_data_subtracted = image_data - median  # Subtract the median as background
+    
+    # Convert image data to 8-bit for CLAHE using OpenCV, scaling data between 0 and 255
+    norm = simple_norm(image_data_subtracted, 'linear', percent=99.5)
+    image_scaled = np.clip(norm(image_data_subtracted) * 255, 0, 255).astype('uint8')
+    
+    # Apply CLAHE to the background-subtracted image
+    clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=tileGridSize)
+    clahe_img = clahe.apply(image_scaled)
+    
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, 3, 1)
+    plt.imshow(image_data, cmap='gray', origin='lower', norm=simple_norm(image_data, 'sqrt', percent=99))
+    plt.title('Original Image')
+    
+    plt.subplot(1, 3, 2)
+    plt.imshow(image_scaled, cmap='gray', origin='lower')
+    plt.title('Background Subtracted')
+    
+    plt.subplot(1, 3, 3)
+    plt.imshow(clahe_img, cmap='gray', origin='lower')
+    plt.title('CLAHE Enhanced')
+    
+    plt.show()
+    
+from astropy.stats import sigma_clipped_stats
+from astropy.io import fits
+from astropy.visualization import simple_norm
+import matplotlib.pyplot as plt
+import numpy as np
+import cv2
+
+def selective_clahe_astronomical_image(image_path, clipLimit=3.0, tileGridSize=(1,1)):
+    with fits.open(image_path) as hdul:
+        image_data = hdul[0].data
+    
+    # Estimate the background
+    mean, median, std = sigma_clipped_stats(image_data, sigma=3.0)
+    background = median
+    image_data_subtracted = image_data - background
+    
+    # Normalize and scale the subtracted image for CLAHE
+    norm = simple_norm(image_data_subtracted, 'linear', percent=99.5)
+    image_scaled = np.clip(norm(image_data_subtracted) * 255, 0, 255).astype('uint8')
+
+    # Create a mask for foreground (exclude background)
+    _, mask = cv2.threshold(image_scaled, 1, 255, 20) # cv2.THRESH_BINARY is 0
+
+    # Initialize the final image that will combine original background with enhanced foreground
+    final_img = image_scaled.copy()
+
+    # Apply CLAHE only to the foreground areas identified by the mask
+    clahe = cv2.createCLAHE(clipLimit=clipLimit, tileGridSize=tileGridSize)
+    clahe_img_whole = clahe.apply(image_scaled)
+    
+    # Initialize the final image array
+    final_img = np.copy(image_scaled)
+    
+    # Use the mask to update only the foreground in the final image
+    final_img[mask > 0] = clahe_img_whole[mask > 0]
+
+    plt.figure(figsize=(20, 7))
+    plt.subplot(1, 4, 1)
+    plt.imshow(image_data, cmap='gray', origin='lower', norm=simple_norm(image_data, 'sqrt', percent=99))
+    plt.title('Original Image')
+    
+    plt.subplot(1, 4, 2)
+    plt.imshow(image_scaled, cmap='gray', origin='lower')
+    plt.title('Background Subtracted')
+    
+    plt.subplot(1, 4, 3)
+    plt.imshow(mask, cmap='gray', origin='lower')
+    plt.title('Foreground Mask')
+    
+    plt.subplot(1, 4, 4)
+    plt.imshow(final_img, cmap='gray', origin='lower')
+    plt.title('Selective CLAHE Enhanced')
+    plt.savefig('./plots/selective_clahe.png')
+    
+    plt.show()
+
+
+def darken_background(image_path):
+    # Load the image
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    
+    # Estimate the background using a blur (simple approach)
+    background = cv2.GaussianBlur(image, (51, 51), 0)
+    
+    # Subtract the background, setting a floor at 0 to avoid negative values
+    foreground = cv2.subtract(image, background)
+    
+    # Darken the original background
+    # Here, we simply reduce the intensity of the estimated background.
+    # Adjust the factor to control the darkness. Values < 1 will darken the background.
+    darkened_background = (background * 0.5).astype(np.uint8)
+    
+    # Combine the darkened background with the original foreground
+    final_image = cv2.add(darkened_background, foreground)
+    cv2.imwrite('./plots/darkened_background.png', 255-final_image)
+    
+    # Visualization
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, 3, 1)
+    plt.imshow(image, cmap='gray')
+    plt.title('Original Image')
+    
+    plt.subplot(1, 3, 2)
+    plt.imshow(background, cmap='gray')
+    plt.title('Estimated Background')
+    
+    plt.subplot(1, 3, 3)
+    plt.imshow(final_image, cmap='gray')
+    plt.title('Image with Darkened Background')
+    
+    plt.show()
