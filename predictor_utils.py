@@ -3,13 +3,13 @@ import traceback
 import numpy as np
 import cv2
 from PIL import Image
-from psutil import disk_partitions
 import supervision as sv
 from astropy.io import fits
 import matplotlib.pyplot as plt
 import torch
 from astronomy_utils import data_norm
 from torchvision.transforms.functional import resize
+from typing import List, Dict, Any, Optional
 
 
 def show_mask(mask, ax, random_color=False):
@@ -79,13 +79,31 @@ def compute_loss(gt_masks, pred_masks):
         losses.append(mask_loss)
     return np.mean(losses) 
 
-def remove_masks(sam_result, mask_on_negative, threshold, remove_big_masks=False, big_masks_threshold=None, img_shape=None):
-    '''
-    Given a segmentation result, this function removes the masks 
-    if the intersection with the negative pixels gives a number is > than a threshold
-    '''
+def remove_masks(
+    sam_result: List[Dict[str, Any]], 
+    mask_on_negative: np.ndarray, 
+    threshold: int, 
+    remove_big_masks: bool = False, 
+    big_masks_threshold: Optional[int] = None, 
+    img_shape: Optional[tuple] = None
+    ) -> List[Dict[str, Any]]:
+    """
+    Removes masks from the segmentation result based on the intersection with negative pixels and size constraints.
+    
+    Parameters:
+    - sam_result (List[Dict[str, Any]]): The segmentation result to process, where each element represents a mask.
+    - mask_on_negative (np.ndarray): A mask indicating negative areas where masks should potentially be removed.
+    - threshold (int): The threshold for the number of intersecting negative pixels to consider a mask for removal.
+    - remove_big_masks (bool, optional): If True, masks exceeding a certain size are removed. Defaults to False.
+    - big_masks_threshold (Optional[int], optional): The area threshold above which big masks are removed. 
+    If None and `remove_big_masks` is True, it's calculated based on `img_shape`. Defaults to None.
+    - img_shape (Optional[tuple], optional): The shape of the input image, used to calculate `big_masks_threshold` if the former is provided. Defaults to None.
+    
+    Returns:
+    - List[Dict[str, Any]]: The modified segmentation result with specified masks removed.
+    """
     if img_shape is not None:
-        big_masks_threshold = img_shape[0]**2/5 if big_masks_threshold is None else big_masks_threshold
+        big_masks_threshold = img_shape[0]**2/4 if big_masks_threshold is None else big_masks_threshold
     else:
         big_masks_threshold = None
 
@@ -95,12 +113,10 @@ def remove_masks(sam_result, mask_on_negative, threshold, remove_big_masks=False
 
         # remove masks on negative pixels given threshold
         if count > threshold:
-            # print(f"Removing mask {segm_index} on negative with {count} counts.")
             bad_indices = np.append(bad_indices, segm_index)
         
-        # remove very big (>70) masks
+        # remove very big masks
         if remove_big_masks and img_shape is not None and np.sum(sam_result[segm_index]['segmentation']) > big_masks_threshold:
-            # print(f"Removing mask {segm_index} with area {np.sum(sam_result[segm_index]['segmentation'])}")
             bad_indices = np.append(bad_indices, segm_index)   
     sam_result = np.delete(sam_result, bad_indices)
     return sam_result
@@ -165,7 +181,6 @@ def instance_segmentation_loss(pred_masks, gt_masks):
     normalized_loss = total_loss / total_masks if total_masks > 0 else total_loss
 
     return normalized_loss
-
 
 def amg_predict(any_sam_model, AMG, data_set_gt_masks, model_name,  IMAGE_PATH, use_negative=None, mask_on_negative=False, show_plot=False):
     
@@ -280,61 +295,29 @@ def SAM_predictor(AMG, sam, IMAGE_PATH, mask_on_negative = None, img_grid_points
     """
     
     image_bgr = cv2.imread(IMAGE_PATH)
-    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB) # (H, W, C)
 
     annotated_image = None
     try:
-
         mask_generator = AMG(sam, points_per_side=None, point_grids=img_grid_points) if img_grid_points is not None else AMG(sam)
-
         sam_result = mask_generator.generate(image_rgb)
-        # output_file = IMAGE_PATH.replace("scaled_raw", "segmented_SAM").replace(".png", "_segmented.png")
         
         if mask_on_negative is not None:
-            sam_result = remove_masks(sam_result=sam_result, mask_on_negative=mask_on_negative.astype(int), 
-                                      threshold=512*512/2, remove_big_masks=True, img_shape=image_rgb.shape)
-            # output_file = IMAGE_PATH.replace("scaled_raw", "segmented_SAM").replace(".png", "_segmented_removed_negative.png")
+            sam_result = remove_masks(sam_result=sam_result, 
+                                             mask_on_negative=mask_on_negative, 
+                                             threshold=image_rgb.shape[0]**2/6,
+                                             remove_big_masks=True, 
+                                             img_shape = image_rgb.shape)
 
         mask_annotator = sv.MaskAnnotator(color_lookup=sv.ColorLookup.INDEX)
         detections = sv.Detections.from_sam(sam_result=sam_result)
         annotated_image = mask_annotator.annotate(scene=image_rgb.copy(), detections=detections)
-        # image = Image.fromarray(annotated_image)
-        # image.save(output_file)
-    
-        annotated_image = annotated_image * (image_rgb>0).astype(float)
+        annotated_image = annotated_image * (image_rgb>0).astype(float) # mask negative pixels
         if annotated_image.max() <= 1.0:
             annotated_image *= 255
         
         annotated_image = annotated_image.astype(np.uint8)
-        
-        # image = Image.fromarray(annotated_image)
 
-        image_rgb = (image_rgb)*(image_rgb>0).astype(float)
-        if image_rgb.max() <= 1.0:
-            image_rgb *= 255
-        
-        # convert the type to 'uint8' (unsigned 8-bit integer)
-        image_rgb = image_rgb.astype(np.uint8)
-
-        # fig, axs = plt.subplots(1, 3, figsize=(30, 10)) 
-
-        # axs[0].imshow(image_rgb)
-        # axs[0].set_title(f'source image {IMAGE_PATH.split("/")[-1].split(".")[0]}', fontsize=30)
-
-        # axs[1].imshow(annotated_image)
-        # axs[1].set_title(f'original SAM segmented image', fontsize=30)
-
-        # if img_grid_points is not None:
-        #     axs[2].imshow(cv2.cvtColor(cv2.imread(IMAGE_PATH), cv2.COLOR_BGR2RGB))
-        #     axs[2].scatter(img_grid_points[0][:, 0]*255, img_grid_points[0][:, 1]*255, s=10, c='r', marker='o')
-        #     axs[2].set_title('Grid points as prompts')
-        # else:
-        #     fig.delaxes(axs[2])
-
-        # # plt.tight_layout()
-        # plt.savefig('segmented_orig_SAM.png', dpi=500)
-        # plt.show()
-        # plt.close() 
     except Exception as e:
         print("Exception:\n", e)
         traceback.print_exc()
