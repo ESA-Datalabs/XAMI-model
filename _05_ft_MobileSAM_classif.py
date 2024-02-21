@@ -32,7 +32,7 @@ from torch.profiler import profile, record_function, ProfilerActivity
 # import torch.autograd.profiler as profiler
 np.set_printoptions(precision=15)
 
-torch.cuda.set_device(7)  # specifically set a GPU (this solves the CUDA out of memeory error when someone else allocates memory with "cuda" instead of a specific "cuda:idx", even when I alocate with "cuda:idx")
+torch.cuda.set_device(4)  # specifically set a GPU (this solves the CUDA out of memeory error when someone else allocates memory with "cuda" instead of a specific "cuda:idx", even when I alocate with "cuda:idx")
 
 # Ensure deterministic behavior (cannot control everything though)
 torch.backends.cudnn.deterministic = True
@@ -52,30 +52,34 @@ from dataset_utils import *
 import predictor_utils
 reload(predictor_utils)
 from predictor_utils import *
-
 # %%
-# !pip install roboflow
+input_dir = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/xmm_om_images_v4-contrast-512-5-7/train/'
+json_file_path = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/xmm_om_images_v4-contrast-512-5-7/train/_annotations.coco.json'
 
-# from roboflow import Roboflow
-# rf = Roboflow(api_key="GGtO5x2eJ77Wa0rLpQSt")
-# project = rf.workspace("orij").project("xmm_om_images-contrast-512-v5")
-# dataset = project.version(3).download("coco")
-
-# %%
-input_dir = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/xmm_om_images-contrast-512-v5-3/train/'
-json_file_path = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/xmm_om_images-contrast-512-v5-3/train/_annotations.coco.json'
-
+# COCO segmentation bboxes are in XYWH format
 with open(json_file_path) as f:
     data = json.load(f)
-
+    
 ground_truth_masks, bbox_coords, classes, class_categories = get_coords_and_masks_from_json(input_dir, data) # type: ignore
 
 # %%
-class_categories, classes
+raw_images = [input_dir+img_data['file_name'] for img_data in data['images']]
 
-# %%
-image_paths_no_augm = [input_dir+img_data['file_name'] for img_data in data['images']]
+image_paths_no_augm = []
+
+for im_path in raw_images:
+    has_annots = 0
+    for k, v in bbox_coords.items():
+        if im_path.split('/')[-1] in k:
+            has_annots = 1
+            
+    if has_annots==0:
+                print("Img doesn't have annotations after filtering.")
+    else:
+        image_paths_no_augm.append(im_path)
+
 len(image_paths_no_augm)
+
 
 # %% [markdown]
 # ## Augmentation
@@ -99,7 +103,7 @@ for file in files:
 import os
 import numpy as np
 import cv2
-from matplotlib import category, pyplot as plt
+from matplotlib import pyplot as plt
 from skimage.color import label2rgb
 import albumentations as A
 import random
@@ -121,60 +125,92 @@ def enlarge_bbox(bbox, delta, image_size):
     h = min(image_size[0], math.ceil(h))
     return np.array([x_min, y_min, w, h])
 
-# define some augmentations
 geometrical_augmentations = A.Compose([
     A.Flip(),
     A.RandomRotate90(),
-    A.RandomSizedCrop((512 - 150, 512 - 50), 512, 512),
-], bbox_params={'format':'coco', 'min_area': 0.1, 'min_visibility': 0.5, 'label_fields': ['category_id']}, p=1)
+    A.RandomSizedCrop((512 - 50, 512 - 50), 512, 512),
+], bbox_params={'format':'coco', 'min_area': 0.1, 'min_visibility': 0.3, 'label_fields': ['category_id']}, p=1)
 
 noise_blur_augmentations = A.Compose([
-    A.GaussianBlur(blur_limit=(3, 7), p=1),
-    A.GaussNoise(var_limit=(10.0, 30.0), p=1),
+    A.GaussianBlur(blur_limit=(3, 3), p=1),
+    A.GaussNoise(var_limit=(10.0, 50.0), p=1),
     A.ISONoise(p=0.8),
-], bbox_params={'format':'coco', 'min_area': 0.01, 'min_visibility': 0.2, 'label_fields': ['category_id']}, p=1)
+], bbox_params={'format':'coco', 'min_area': 0.1, 'min_visibility': 0.3, 'label_fields': ['category_id']}, p=1)
 
 image_paths = []
 for image_path in image_paths_no_augm:
     image_paths.append(image_path)
-    # print(image_path)
-    # image_ = cv2.imread(image_path)
-    # image_ = cv2.cvtColor(image_, cv2.COLOR_BGR2RGB)
-    
-    # masks = [value_i for key_i, value_i in ground_truth_masks.items() if image_path.split('/')[-1] in key_i]
+    image_ = cv2.imread(image_path)
+    image_ = cv2.cvtColor(image_, cv2.COLOR_BGR2RGB)
+    image_size = (image_.shape[0], image_.shape[1])
+    masks = [value_i for key_i, value_i in ground_truth_masks.items() if image_path.split('/')[-1] in key_i]
+    bboxes_ = [enlarge_bbox(np.array([value_i[0], math.floor(value_i[1]),  math.floor(value_i[2] - value_i[0]), \
+                                    math.floor(value_i[3] - value_i[1])]), 2, image_size) \
+                                    for key_i, value_i in bbox_coords.items() if image_path.split('/')[-1] in key_i]   
+    label_ids = [classes[key_i] for key_i, value_i in bbox_coords.items() if image_path.split('/')[-1] in key_i]
 
-    # image_size = (image_.shape[0], image_.shape[1])
-    
-    # # Enlarge the bounding boxes
-    # bboxes_ = [enlarge_bbox(np.array([value_i[0], math.floor(value_i[1]),  math.floor(value_i[2] - value_i[0]), \
-    #                                 math.floor(value_i[3] - value_i[1])]), 5, image_size) \
-    #                                 for key_i, value_i in bbox_coords.items() if image_path.split('/')[-1] in key_i]   
-
-    # label_ids = [classes[key_i] for key_i, value_i in bbox_coords.items() if image_path.split('/')[-1] in key_i]
-    # # print('label_ids:', len(label_ids))
-    
-    # img_negative_mask = (image_>0).astype(int)
-
-    # augmented1 = augment_and_show(geometrical_augmentations, image_, masks, bboxes_, label_ids, class_categories, show_=False)
-    # new_image_negative_mask = (augmented1['image']>0).astype(int) # to mask the transform which is derived from the geometric transform
-    
-    # augmented3 = augment_and_show(noise_blur_augmentations, image_, masks, bboxes_, label_ids, class_categories, show_=False)
-    
-    # # mask the transform using the image negative mask
-    # augmented3['image'] = augmented3['image'] * img_negative_mask
+    image_size = (image_.shape[0], image_.shape[1])
+    for bbox in bboxes_:
+        if bbox[2] <= 1 or bbox[3] <= 1:
+            print("Invalid bbox detected:", bbox)
         
-    # new_filename1 = image_path.replace('.'+image_path.split('.')[-1], '_augm1.jpg')
-    # new_filename3 = image_path.replace('.'+image_path.split('.')[-1], '_augm3.jpg')
+    if len(bboxes_) != len(masks):
+        print('len(bboxes_) != len(masks)', len(bboxes_), len(masks))
+        continue
 
-    # # print('aug masks1:', len(augmented1['masks']), 'bboxes:', len(augmented1['bboxes']))
-    # # print('aug masks3:',len(augmented3['masks']), 'bboxes:', len(augmented3['bboxes']))
+    if len(bboxes_) != len(label_ids):
+        print('len(bboxes_) != len(label_ids)', len(bboxes_), len(label_ids))
+        continue
 
-    # update_dataset_with_augms(augmented1, new_filename1, bbox_coords, ground_truth_masks, image_paths, classes)
-    # update_dataset_with_augms(augmented3, new_filename3, bbox_coords, ground_truth_masks, image_paths, classes)
+    if len(bboxes_) == 0:
+        print(image_path)
+        
+    img_negative_mask = (image_>0).astype(int)
+    
+    # the geometrical augm doesn't change the shape of the image
+    augmented1 = augment_and_show(geometrical_augmentations, image_, masks, bboxes_, label_ids, class_categories, show_=False)
+    new_image_negative_mask = (augmented1['image']>0).astype(int) # to mask the transform which is derived from the geometric transform
+    augmented3 = augment_and_show(noise_blur_augmentations, image_, masks, bboxes_, label_ids, class_categories, show_=False)
+
+    # mask the transform using the image negative mask
+    augmented3['image'] = augmented3['image'] * img_negative_mask
+        
+    new_filename1 = image_path.replace('.'+image_path.split('.')[-1], '_augm1.jpg')
+    new_filename3 = image_path.replace('.'+image_path.split('.')[-1], '_augm3.jpg')
+
+    update_dataset_with_augms(augmented1, new_filename1, bbox_coords, ground_truth_masks, image_paths, classes)
+    update_dataset_with_augms(augmented3, new_filename3, bbox_coords, ground_truth_masks, image_paths, classes)
 
 # %%
 len(image_paths)
 
+for im_path in image_paths:
+    has_annots = 0
+    for k, v in bbox_coords.items():
+        if im_path.split('/')[-1] in k:
+            has_annots = 1
+            
+    if has_annots==0:
+           image_paths.remove(im_path)
+
+len(image_paths)
+
+# %%
+for key_i, value_i in bbox_coords.items():
+     if image_path.split('/')[-1] in key_i:
+        x1, y1, x2, y2 = value_i
+        if x2 - x1<2 or y2-y1 <2:
+            print(value_i)
+
+# %%
+for image_path in image_paths:
+    image_ = cv2.imread(image_path)
+    image_ = cv2.cvtColor(image_, cv2.COLOR_BGR2RGB)
+    if image_.shape [1]< 512:
+        print(image_.shape)
+
+# %%
+len(image_paths)
 # %%
 # augmented3['image'].shape, len(augmented3['bboxes']), len(augmented3['masks']) 
 
@@ -279,7 +315,7 @@ import ft_mobile_sam
 from ft_mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/weights/mobile_sam.pt"
-device = "cuda:7" if torch.cuda.is_available() else "cpu"
+device = "cuda:4" if torch.cuda.is_available() else "cpu"
 print("device:", device)
 
 mobile_sam_model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
@@ -429,7 +465,7 @@ print(torch.cuda.memory_reserved()/(1024**2))
 # %%
 for name, param in mobile_sam_model.named_parameters():
     # if "mask_decoder" in name:
-    layers_to_fine_tune = ['mask_decoder.output_hypernetworks_mlps','mask_decoder.iou_prediction_head', 'mask_decoder.output_upscaling', 'mask_decoder.mask_tokens', 'mask_decoder.iou_token']
+    # layers_to_fine_tune = ['mask_decoder.output_hypernetworks_mlps','mask_decoder.iou_prediction_head', 'mask_decoder.output_upscaling', 'mask_decoder.mask_tokens', 'mask_decoder.iou_token']
     # if any(s in name for s in layers_to_fine_tune): # or "image_encoder.patch_embed" in name:
     if False:
         param.requires_grad = True
@@ -473,7 +509,6 @@ class ExtendedSAMModel(nn.Module):
         # Pass through the classifier
         class_logits = self.classifier(flattened_mask)
         return class_logits
-
 num_classes = len(class_categories.values())
 extended_model = ExtendedSAMModel(512*512*3, num_classes).to(device) # TODO: chaneg this hard-coded value to work on other inputs
 
@@ -488,7 +523,7 @@ import torch
 import torch.optim as optim
 import torch.nn.functional as F
 
-lr=3e-4
+lr=3e-3
 wd=0.01
 optimizer = torch.optim.AdamW(extended_model.parameters(), lr=lr, weight_decay=wd)
 scheduler = CosineAnnealingLR(optimizer, T_max=30, eta_min=1e-8) # not very helpful
@@ -600,71 +635,71 @@ def process_batch(inputs, model, optimizer, is_training, gt_masks, classes, clas
 # # %%
 
 
-# dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
-# dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
+dataset_val = ImageDataset(val_image_paths, val_bboxes, val_gt_masks, transform_image) 
+dataloader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=True)
 
-# epoch_train_losses, epoch_val_losses = [], []
-# top1_train_accs, top5_train_accs = [], []
-# top1_val_accs, top5_val_accs = [], []
+epoch_train_losses, epoch_val_losses = [], []
+top1_train_accs, top5_train_accs = [], []
+top1_val_accs, top5_val_accs = [], []
 
-# # Training and Validation Loops
-# for epoch in range(num_epochs):
-#     extended_model.train()
+# Training and Validation Loops
+for epoch in range(num_epochs):
+    extended_model.train()
 
-#     train_losses, val_losses = [], []
-#     top1_train_accuracy, top5_train_accuracy = [], []
-#     top1_val_accuracy, top5_val_accuracy = [], []
+    train_losses, val_losses = [], []
+    top1_train_accuracy, top5_train_accuracy = [], []
+    top1_val_accuracy, top5_val_accuracy = [], []
 
-#     for inputs in tqdm(dataloader):
-#         train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, extended_model, optimizer, True, train_gt_masks, classes, class_categories, device, plot_preds=False)
+    for inputs in tqdm(dataloader):
+        train_loss, train_top1_acc, train_top5_acc = process_batch(inputs, extended_model, optimizer, True, train_gt_masks, classes, class_categories, device, plot_preds=False)
     
-#         train_losses.append(train_loss)
-#         top1_train_accuracy.append(train_top1_acc)
-#         top5_train_accuracy.append(train_top5_acc)
+        train_losses.append(train_loss)
+        top1_train_accuracy.append(train_top1_acc)
+        top5_train_accuracy.append(train_top5_acc)
 
-#     epoch_train_losses.append(np.mean(train_losses))
-#     top1_train_accs.append(np.mean(top1_train_accuracy))
-#     top5_train_accs.append(np.mean(top5_train_accuracy))
+    epoch_train_losses.append(np.mean(train_losses))
+    top1_train_accs.append(np.mean(top1_train_accuracy))
+    top5_train_accs.append(np.mean(top5_train_accuracy))
 
-#     if use_wandb:
-#         wandb.log({'epoch classif train loss': np.mean(epoch_train_losses)})
-#         wandb.log({'epoch top-1 acc': np.mean(top1_train_accuracy)})
-#         wandb.log({'epoch top-5 acc': np.mean(top5_train_accuracy)})
+    if use_wandb:
+        wandb.log({'epoch classif train loss': np.mean(epoch_train_losses)})
+        wandb.log({'epoch top-1 acc': np.mean(top1_train_accuracy)})
+        wandb.log({'epoch top-5 acc': np.mean(top5_train_accuracy)})
 
-#     extended_model.eval()
-#     with torch.no_grad():
-#         for inputs in dataloader_val:
-#             val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, extended_model, None, False, val_gt_masks, classes, class_categories, device, plot_preds=False)
+    extended_model.eval()
+    with torch.no_grad():
+        for inputs in dataloader_val:
+            val_loss, val_top1_acc, val_top5_acc = process_batch(inputs, extended_model, None, False, val_gt_masks, classes, class_categories, device, plot_preds=False)
 
-#             val_losses.append(val_loss)
-#             top1_val_accuracy.append(val_top1_acc)
-#             top5_val_accuracy.append(val_top5_acc)
+            val_losses.append(val_loss)
+            top1_val_accuracy.append(val_top1_acc)
+            top5_val_accuracy.append(val_top5_acc)
 
-#         epoch_val_losses.append(np.mean(val_losses))
-#         top1_val_accs.append(np.mean(top1_val_accuracy))
-#         top5_val_accs.append(np.mean(top5_val_accuracy))
+        epoch_val_losses.append(np.mean(val_losses))
+        top1_val_accs.append(np.mean(top1_val_accuracy))
+        top5_val_accs.append(np.mean(top5_val_accuracy))
 
-#         if use_wandb:
-#             wandb.log({'epoch classif val loss': np.mean(epoch_val_losses)})
-#             wandb.log({'epoch val top-1 acc': np.mean(top1_val_accuracy)})
-#             wandb.log({'epoch val top-5 acc': np.mean(top5_val_accuracy)})
+        if use_wandb:
+            wandb.log({'epoch classif val loss': np.mean(epoch_val_losses)})
+            wandb.log({'epoch val top-1 acc': np.mean(top1_val_accuracy)})
+            wandb.log({'epoch val top-5 acc': np.mean(top5_val_accuracy)})
     
-#     print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_train_losses)}.   Top-1 accuracy: {np.mean(top1_train_accuracy)}. Top-5 accuracy: {np.mean(top5_train_accuracy)}')
-#     print(f'EPOCH: {epoch}. Validation classes loss: {np.mean(epoch_val_losses)}.   Top-1 accuracy: {np.mean(top1_val_accuracy)}.   Top-5 accuracy: {np.mean(top5_val_accuracy)}')
+    print(f'EPOCH: {epoch}. Training classes loss: {np.mean(epoch_train_losses)}.   Top-1 accuracy: {np.mean(top1_train_accuracy)}. Top-5 accuracy: {np.mean(top5_train_accuracy)}')
+    print(f'EPOCH: {epoch}. Validation classes loss: {np.mean(epoch_val_losses)}.   Top-1 accuracy: {np.mean(top1_val_accuracy)}.   Top-5 accuracy: {np.mean(top5_val_accuracy)}')
 
 # # %%
-# torch.save(extended_model.state_dict(), './weights/classif_checkpoint.pth')
+torch.save(extended_model.state_dict(), './weights/classif_checkpoint.pth')
 
 # # %%
-# plt.plot(list(range(len(epoch_train_losses))), epoch_train_losses, label='Training Loss')
-# plt.plot(list(range(len(epoch_val_losses))), epoch_val_losses, label='Validation Loss')
-# plt.title('Mean epoch loss \n mask with sigmoid')
-# plt.xlabel('Epoch Number')
-# plt.ylabel('Loss')
-# plt.legend()
-# plt.savefig('./plots/loss_train_classif.png')
-# plt.show()
-# plt.close()
+plt.plot(list(range(len(epoch_train_losses))), epoch_train_losses, label='Training Loss')
+plt.plot(list(range(len(epoch_val_losses))), epoch_val_losses, label='Validation Loss')
+plt.title('Mean epoch loss \n mask with sigmoid')
+plt.xlabel('Epoch Number')
+plt.ylabel('Loss')
+plt.legend()
+plt.savefig('./plots/loss_train_classif.png')
+plt.show()
+plt.close()
 
 # %%
 extended_model.load_state_dict(torch.load('./weights/classif_checkpoint.pth'))
@@ -714,7 +749,7 @@ base_colors = [
     (255, 255, 128),# Light Yellow
     (255, 128, 255),# Light Magenta
     (128, 255, 255),# Light Cyan
-]∏
+]
 
 num_colors_needed = len(class_categories.keys())
 colors = {class_categories[class_id]: base_colors[i] for i, class_id in enumerate(class_categories.keys())}

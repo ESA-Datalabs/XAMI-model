@@ -72,8 +72,8 @@ def create_annotation(filename, width, height, depth, objects):
         polygon = ET.SubElement(object_elem, 'polygon')
         for i in range(0, len(obj['segmentations']), 2):
 
-            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i]+2) # + n this is added for alignemnt
-            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i+1]+2)  # + n this is added for alignemnt
+            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i]+1.5) # + n this is added for alignemnt
+            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i+1]+1.5)  # + n this is added for alignemnt
     xml_str = ET.tostring(annotation, encoding='utf-8')
 
     dom = minidom.parseString(xml_str)
