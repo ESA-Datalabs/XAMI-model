@@ -194,13 +194,15 @@ def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
             xyhw = masks[i]['bbox']
             if xyhw[2]>5 or xyhw[3]>5: # ignore masks with an (h,w) < (5,5)
                 if 'loop' in class_categories[classes[i]] or 'ring' in class_categories[classes[i]]: #!!!!!
+                # if not (class_categories[classes[i]].endswith('star') or class_categories[classes[i]].endswith('streak')):
+                # if True:
 	                segmentation = masks[i]['segmentation']
 	                if isinstance(segmentation, list):
 	                    if len(segmentation) > 0 and isinstance(segmentation[0], list):
 	                        points = segmentation[0]
 	                        h_img, w_img = temp_img.shape[:2]
 	                        mask = create_mask(points, (h_img, w_img)) # COCO segmentations are polygon points, and must be converted to masks
-	                        bbox = mask_to_bbox(mask)
+	                        bbox = mask_to_bbox(mask)  #xyhw[0], xyhw[1], xyhw[2]+xyhw[0], xyhw[3]+xyhw[1] 
 	                        result_masks[f'{im["file_name"]}_mask{i}'] = mask
 	                        bbox_coords[f'{im["file_name"]}_mask{i}'] = bbox
 	                        result_class[f'{im["file_name"]}_mask{i}'] = classes[i]
@@ -218,7 +220,6 @@ def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
                 print(f"Ignore xyhw {xyhw}. {class_categories[classes[i]]}. {im['file_name']}")
                     
         del temp_img
-        k+=1
 	
     return result_masks, bbox_coords, result_class, class_categories
 
@@ -345,7 +346,8 @@ def augment_and_show(aug, image, masks=None, bboxes=[], categories=[], category_
             
     return augmented
 
-def update_dataset_with_augms(augmented_set: Dict[str, Any], 
+def update_dataset_with_augms(
+                              augmented_set: Dict[str, Any], 
                               new_filename: str, bbox_coords: Dict[str, Any], 
                               ground_truth_masks: Dict[str, Any], 
                               image_paths: List[str],
@@ -372,6 +374,23 @@ def update_dataset_with_augms(augmented_set: Dict[str, Any],
     image_paths.append(new_filename)
     # print('nb masks:', len(augmented_set['masks']), 'cats:', len(augmented_set['category_id']))
 
+    # new_annotations = []
+    
+    # image_id = len(data.get('images', [])) + 1
+    # from datetime import datetime
+    # image = cv2.imread(new_filename)
+
+    # height, width = image.shape[:2]
+    # image={
+	# 		'id': image_id,
+	# 		"license": 1,
+	# 		'file_name': new_filename,
+	# 		"height": height,
+	# 		"width": width,
+	# 		"date_captured": datetime.now().isoformat()
+	# 	}
+    # data['images'].append(image)
+    
     # Add image masks and bboxes to the dataset
     for mask_i in range(len(augmented_set['bboxes'])):
         xyxy_bbox = np.array([augmented_set['bboxes'][mask_i][0], augmented_set['bboxes'][mask_i][1],
@@ -381,3 +400,17 @@ def update_dataset_with_augms(augmented_set: Dict[str, Any],
         bbox_coords[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = xyxy_bbox
         ground_truth_masks[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = augmented_set['masks'][mask_i]
         classes[f'{new_filename.split("/")[-1]}_mask{mask_i}'] = augmented_set['category_id'][mask_i]
+        
+    #     new_annotations = {
+    #         'image_id': image_id,
+    #         'category_id': augmented_set['category_id'][mask_i],
+    #         'bbox': xyxy_bbox.tolist(),
+    #         'segmentation': augmented_set['masks'][mask_i],
+    #         'area': np.sum(augmented_set['masks'][mask_i]),
+    #         'iscrowd': 0
+    #     }
+        
+    #     data['annotations'].append(new_annotations)
+    
+    # return data
+        
