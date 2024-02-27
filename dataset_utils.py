@@ -223,7 +223,6 @@ def get_coords_and_masks_from_json(input_dir, data_in, image_key=None):
 	
     return result_masks, bbox_coords, result_class, class_categories
 
-
 def mask_to_bbox(mask):
     """
     Calculate the bounding box from the mask.
@@ -239,12 +238,28 @@ def mask_to_bbox(mask):
     return [x_min, y_min, x_max, y_max]
 
 def create_mask(points, image_size):
-    polygon = [(points[i], points[i+1]) for i in range(0, len(points), 2)]
+    polygon = [(points[i], points[i+1])*255 for i in range(0, len(points), 2)]
     mask = np.zeros(image_size, dtype=np.uint8)
     
     cv2.fillPoly(mask, [np.array(polygon, dtype=np.int32)], 1)
     return mask
 
+def create_mask_0_1(points, image_size):
+    """
+    Create a binary mask from polygon points.
+
+    :param points: List of normalized points (x, y) of the polygon, values between 0 and 1.
+    :param image_size: Tuple of (height, width) of the image.
+    :return: A binary mask as a numpy array.
+    """
+    height, width = image_size
+    
+    # Scale points from normalized coordinates to pixel coordinates
+    polygon = [(int(x * width), int(y * height)) for x, y in zip(points[::2], points[1::2])]
+    
+    mask = np.zeros(image_size, dtype=np.uint8)
+    cv2.fillPoly(mask, [np.array(polygon, dtype=np.int32)], 1)
+    return mask
 def align_masks_and_bboxes(augmented_set):
     '''
     Sometimes, the masks and bboxes returned by the Augmentation process do not have the same size, and (thus) they are not aligned by index. 
