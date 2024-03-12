@@ -3,7 +3,7 @@ extracted_sources_bboxes_points.json
 yolov8n.pt
 *.pyc
 *.pth
-*.pth
+*.pt
 *.json
 /xmm_om_images*
 /weight/*
@@ -17,7 +17,6 @@ yolov8n.pt
 *.txt
 ft_MobileSAM_multiple_images.ipynb
 view_sam
-astronomy_utils.py
 multiple_models_inference.ipynb
 ft_MobileSAM_dataset_old.py
 ft_EVA.ipynb
@@ -36,3 +35,16 @@ output
 yolov8n-seg.pt
 yolov8x-seg.pt
 yolov8-segm-fine-tuning*
+/runs/*
+*cache*
+imgs_512_50.tar.gz
+obs_info_1024_1000
+.gitignore
+datasets/coco8-seg/LICENSE
+datasets/coco8-seg/README.md
+*.yaml
+*events*
+*config*
+*.onnx*
+*checkpoint*
+*.zip*
