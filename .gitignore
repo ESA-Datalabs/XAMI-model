@@ -48,3 +48,5 @@ datasets/coco8-seg/README.md
 *.onnx*
 *checkpoint*
 *.zip*
+tutorial_exps/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py
+work_dir/mask-rcnn_swin-t-p4-w7_fpn_amp-ms-crop-3x_coco.py
