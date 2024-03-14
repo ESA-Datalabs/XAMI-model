@@ -2,6 +2,8 @@
 	"architectures": [
 	  ""
 	],
+	
+	"model_type": "vit",
 
 	"dataset": {
 	  "name": "AstroArtefactToolkit_XMMoptical",
