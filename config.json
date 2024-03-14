@@ -2,15 +2,6 @@
 	"architectures": [
 	  ""
 	],
-	"backbone_config": {
-	  "id2label": {
-		"0": "central-ring",
-		"1": "smoke-ring",
-		"2": "star-loop"
-	  },
-	  "image_size": 512,
-	  "in_channels": 3
-	},
 
 	"dataset": {
 	  "name": "AstroArtefactToolkit_XMMoptical",
