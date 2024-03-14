@@ -44,7 +44,7 @@ datasets/coco8-seg/README.md
 *data.yaml
 *args.yaml
 *events*
-*config*
+*config.py*
 *.onnx*
 *checkpoint*
 *.zip*

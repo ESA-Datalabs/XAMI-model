@@ -1,0 +1,24 @@
+{
+	"architectures": [
+	  ""
+	],
+	"backbone_config": {
+	  "id2label": {
+		"0": "central-ring",
+		"1": "smoke-ring",
+		"2": "star-loop"
+	  },
+	  "image_size": 512,
+	  "in_channels": 3,
+	  "model_type": "vit_l"
+	},
+
+	"dataset": {
+	  "name": "custom",
+	  "root": "data",
+	  "train": "train",
+	  "val": "val",
+	  "test": "test",
+	  "num_classes": 3
+	}
+  }
