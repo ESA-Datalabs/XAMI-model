@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # XMM_OM_AI Deep Learning project
 
 The code uses images from the XMM-Newton's Opical Monitor. The image windows are stacked (2048x2048) and rebinned to 512x512.
@@ -14,3 +15,8 @@ Information about the configuration of the OM (e.g.: sub-windows stacking) can b
 MobileSAM and MobileSAMv2 model checkpoint can be found here: https://github.com/ChaoningZhang/MobileSAM
 
 The code uses python=3.11.
+=======
+---
+license: cc-by-4.0
+---
+>>>>>>> 2193791273cd75136760f16b221b63720e5bce31
