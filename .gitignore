@@ -4,7 +4,6 @@ yolov8n.pt
 *.pyc
 *.pth
 *.pt
-*.json
 /xmm_om_images*
 /weight/*
 /weights/*  
@@ -51,3 +50,5 @@ datasets/coco8-seg/README.md
 *.zip*
 tutorial_exps/mask-rcnn_r50-caffe_fpn_ms-poly-3x_coco.py
 work_dir/mask-rcnn_swin-t-p4-w7_fpn_amp-ms-crop-3x_coco.py
+*annotations.coco.json*
+*scalars.json*
