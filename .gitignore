@@ -42,7 +42,8 @@ obs_info_1024_1000
 .gitignore
 datasets/coco8-seg/LICENSE
 datasets/coco8-seg/README.md
-*.yaml
+*data.yaml
+*args.yaml
 *events*
 *config*
 *.onnx*
