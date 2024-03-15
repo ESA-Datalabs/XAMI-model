@@ -2,7 +2,7 @@
 language: en
 license: mit
 datasets:
-- AstroArtefactToolkit_XMMoptical
+- iulia-elisa/AstroArtefactToolkit_XMMoptical
 model-index:
 - name: xmm_om_model
   results:
@@ -30,7 +30,30 @@ Information about the configuration of the OM (e.g.: sub-windows stacking) can b
 > https://heasarc.gsfc.nasa.gov/docs/xmm/uhb/om.html
 > 
 
-The code uses python>=3.9
+Clone the repo:
+
+```
+git clone https://huggingface.co/iulia-elisa/xmm_om_models
+cd xmm_om_model
+pip install -r requirements.txt
+```
+
+## Running the Model Pipeline
+
+After setting up your environment, use the following Python code to dynamically load the models and custom processing steps.
+
+```
+import sys
+from YoloSamPipeline import YoloSam
+
+yolo_path = 'path/to/yolo/checkpoint' 
+mobile_sam_path = 'path/to/mobile_sam/checkpoint' 
+
+yolo_sam_pipe = YoloSam('cuda:0', yolo_path, mobile_sam_path )
+yolo_sam_pipe.run_predict('path/to/image')
+```
+
+## Licence 
 
 license: cc-by-4.0
 
