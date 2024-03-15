@@ -32,15 +32,14 @@ Information about the configuration of the OM (e.g.: sub-windows stacking) can b
 
 ## Clone the repo:
 
-```shell
+```
 git clone https://huggingface.co/iulia-elisa/xmm_om_models
 cd xmm_om_model
-pip install -r requirements.txt
 ```
 
 ## Running the Model Pipeline
 
-After setting up your environment, use the following Python code to dynamically load the models and custom processing steps.
+After setting up your environment, use the following Python code for model loading and inference.
 
 ```python
 import sys
@@ -49,7 +48,7 @@ from YoloSamPipeline import YoloSam
 yolo_path = 'path/to/yolo/checkpoint' 
 mobile_sam_path = 'path/to/mobile_sam/checkpoint' 
 
-yolo_sam_pipe = YoloSam('cuda:0', yolo_path, mobile_sam_path )
+yolo_sam_pipe = YoloSam('cuda', yolo_path, mobile_sam_path ) # or cpu
 yolo_sam_pipe.run_predict('path/to/image')
 ```
 
