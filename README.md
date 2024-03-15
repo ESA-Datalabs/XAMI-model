@@ -30,9 +30,9 @@ Information about the configuration of the OM (e.g.: sub-windows stacking) can b
 > https://heasarc.gsfc.nasa.gov/docs/xmm/uhb/om.html
 > 
 
-Clone the repo:
+## Clone the repo:
 
-```
+```shell
 git clone https://huggingface.co/iulia-elisa/xmm_om_models
 cd xmm_om_model
 pip install -r requirements.txt
@@ -42,7 +42,7 @@ pip install -r requirements.txt
 
 After setting up your environment, use the following Python code to dynamically load the models and custom processing steps.
 
-```
+```python
 import sys
 from YoloSamPipeline import YoloSam
 
