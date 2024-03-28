@@ -89,7 +89,7 @@ class AstroSAM:
         iou_image_loss = []
         pred_masks = self.model.postprocess_masks(low_res_masks, input_size, original_image_size).to(self.device)
 
-        # Gaussian kernel
+        # Apply Gaussian kernel
         kernel_size = 5
         sigma = 2
         gaussian_kernel = self.create_gaussian_kernel(kernel_size, sigma).to(self.device)
@@ -99,7 +99,6 @@ class AstroSAM:
         threshold_mask = torch.sigmoid(10 * (pred_masks - self.model.mask_threshold)) # sgmoid with steepness
         gt_threshold_mask = torch.as_tensor(gt_rle_to_masks, dtype=torch.float32) 
         numpy_gt_threshold_mask = gt_threshold_mask.contiguous().detach().cpu().numpy()
-        mask_result = torch.squeeze(threshold_mask, dim=1).detach().cpu().numpy()
         for i in range(threshold_mask.shape[0]):
             iou_per_mask = loss.iou_single(threshold_mask[i][0], gt_threshold_mask[i])
             ious.append(iou_per_mask)

@@ -49,24 +49,46 @@ def compute_iou_matrix(pred_masks, gt_masks):
     
     return iou_matrix
 
-def compute_focal_loss(input, target, alpha=0.7, gamma=2.0):
-    """Computes the focal loss between `input` and `target`."""
-    input = torch.sigmoid(input)
-    ce_loss = F.binary_cross_entropy(input, target, reduction='none')
-    p_t = target * input + (1 - target) * (1 - input)
-    focal_loss = alpha * (1 - p_t) ** gamma * ce_loss
-    return focal_loss.mean()
-	
+# def compute_focal_loss(input, target, alpha=0.7, gamma=2.0):
+#     """Computes the focal loss between `input` and `target`."""
+#     input = torch.sigmoid(input)
+#     ce_loss = F.binary_cross_entropy(input, target, reduction='none')
+#     p_t = target * input + (1 - target) * (1 - input)
+#     focal_loss = alpha * (1 - p_t) ** gamma * ce_loss
+#     return focal_loss.mean()
+
+# inspired from here: https://www.kaggle.com/code/aakashnain/diving-deep-into-focal-loss
+def compute_focal_loss(y_pred, y_true, alpha=0.7, gamma=2.0):
+    """
+    Compute the focal loss between `y_true` and `y_pred`.
+    
+    Args:
+    - y_true (torch.Tensor): Ground truth labels, shape [H, W]
+    - y_pred (torch.Tensor): Predicted logits, shape [H, W]
+    - alpha (float): Weighting factor.
+    - gamma (float): Focusing parameter.
+
+    Returns:
+    - torch.Tensor: Computed focal loss.
+    """
+    p = torch.sigmoid(y_pred)
+    bce = F.binary_cross_entropy_with_logits(y_pred, y_true, reduction='none')
+    p_t = y_true * p + (1 - y_true) * (1 - p)
+    alpha_factor = y_true * alpha + (1 - y_true) * (1 - alpha)
+    modulating_factor = torch.pow((1 - p_t), gamma)
+    focal_loss = alpha_factor * modulating_factor * bce
+
+    return torch.mean(focal_loss)
+
 def compute_dice_loss(pred_mask, gt_mask):
     """
     Compute the Dice loss between a single predicted mask and a single ground truth mask.
     Both masks should be floating-point tensors with the same shape.
     """
     # Flatten the masks to ensure compatibility with different shapes
-    pred_flat = pred_mask.view(-1).float()
-    gt_flat = gt_mask.view(-1).float()
-    
-    # Compute intersection and union
+    pred_flat = torch.flatten(pred_mask)
+    gt_flat = torch.flatten(gt_mask) 
+
     intersection = (pred_flat * gt_flat).sum()
     union = pred_flat.sum() + gt_flat.sum()
     
@@ -76,11 +98,19 @@ def compute_dice_loss(pred_mask, gt_mask):
     
     return dice_loss
 
-def segm_loss_match_hungarian(pred_masks, low_res_masks, gt_masks):
+def segm_loss_match_hungarian(
+	pred_masks, 
+	low_res_masks, 
+	gt_masks, 
+	all_pred_classes, 
+	all_gt_classes, 
+	iou_scores):
 
 	# Compute IoU matrix for all pairs
 	iou_matrix = compute_iou_matrix(pred_masks, gt_masks)  
-	
+	preds = []
+	gts = []
+	gt_classes, pred_classes, iou_scores_sam = [], [], []
 	# Hungarian matching
 	cost_matrix = -iou_matrix  # Negate IoU for minimization
 	row_ind, col_ind = linear_sum_assignment(cost_matrix.detach().numpy())
@@ -89,6 +119,11 @@ def segm_loss_match_hungarian(pred_masks, low_res_masks, gt_masks):
 	total_dice_loss = 0
 	total_focal_loss = 0
 	for pred_idx, gt_idx in zip(row_ind, col_ind):
+	    preds.append(pred_masks[pred_idx])
+	    gts.append(gt_masks[gt_idx])
+	    pred_classes.append(all_pred_classes[pred_idx])
+	    gt_classes.append(all_gt_classes[gt_idx])
+	    iou_scores_sam.append(iou_scores[pred_idx])
 	    # average_intensity = compute_average_intensity(gt_masks[gt_idx], image) # weight the loss by object intensity
 	    total_dice_loss += compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
 	    total_focal_loss += compute_focal_loss(low_res_masks[pred_idx].float(), gt_masks[gt_idx].float())
@@ -98,10 +133,9 @@ def segm_loss_match_hungarian(pred_masks, low_res_masks, gt_masks):
 	mean_focal_loss = total_focal_loss / len(row_ind)
 
     # Combine losses
-	total_loss = mean_dice_loss + 20*mean_focal_loss
+	total_loss = mean_dice_loss + 20 * mean_focal_loss
     
-	return total_loss #* average_intensity
-
+	return total_loss, preds, gts, gt_classes, pred_classes, iou_scores_sam #* average_intensity
 
 def segm_loss_match_iou_based(pred_masks, low_res_masks, gt_masks):
     iou_matrix = compute_iou_matrix(pred_masks, gt_masks)  # Compute IoU matrix for all pairs
@@ -196,10 +230,13 @@ def focal_loss_per_mask_pair(inputs, targets, mask_areas, alpha=0.8, gamma=2):
     for i in range(batch_size):
         input_mask = inputs[i].unsqueeze(0)
         target_mask = targets[i].unsqueeze(0)
-        BCE = F.binary_cross_entropy_with_logits(input_mask, target_mask, reduction='mean')
-        BCE_EXP = torch.exp(-BCE)
-        mask_focal_loss = alpha * (1 - BCE_EXP)**gamma * BCE # * mask_areas[i]/total_masks_area # weighted loss given mask size
+        mask_focal_loss = compute_focal_loss(input_mask, target_mask)
         focal_loss += mask_focal_loss
+		
+        # BCE = F.binary_cross_entropy_with_logits(input_mask, target_mask, reduction='mean')
+        # BCE_EXP = torch.exp(-BCE)
+        # mask_focal_loss = alpha * (1 - BCE_EXP)**gamma * BCE # * mask_areas[i]/total_masks_area # weighted loss given mask size
+        # focal_loss += mask_focal_loss
     
     focal_loss /= batch_size
     
