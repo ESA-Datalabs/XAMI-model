@@ -25,11 +25,9 @@ def compute_median_intensity(mask, image):
     Returns:
     - median_intensity: median intensity of the object
     """
-    print(mask.shape, image.shape)
     
     mask = mask.squeeze(0).unsqueeze(2).repeat(1, 1, 3)
     object_pixels = image * mask.detach().cpu().numpy()
-    print(np.max(object_pixels), np.min(object_pixels)) 
     
     median_intensity = np.median(object_pixels[object_pixels>0])/image.shape[0]
     plt.imshow(image * mask.detach().cpu().numpy())
@@ -145,6 +143,8 @@ def segm_loss_match_hungarian_compared(
 	all_gt_classes, 
 	iou_scores,
     image = None,
+    wt_classes = None,
+    wt_mask = None,
     mask_areas=None):
 
     # Compute IoU matrix for all pairs
@@ -159,6 +159,10 @@ def segm_loss_match_hungarian_compared(
     # Compute loss for matched pairs
     total_dice_loss = 0
     total_focal_loss = 0
+    
+    if wt_mask is not None:
+        wt_mask = wt_mask[:, :, 0]
+    
     for pred_idx, gt_idx in zip(row_ind, col_ind):
         
         dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
@@ -167,13 +171,25 @@ def segm_loss_match_hungarian_compared(
         focal_loss_yolo = compute_focal_loss(yolo_pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
         
         good_mask = pred_masks[pred_idx]
-        if image is not None:
+        if wt_mask is not None and wt_classes is not None:
             # check if the original image bounded by the ground truth mask has a higher average intensity than the predicted mask
-            median_intensity_gt = compute_median_intensity(gt_masks[gt_idx], image)
-            print("median intensity", median_intensity_gt)
-
-            if median_intensity_gt < 0.1: # TODO: make this less hard-coded
-                print("median intensity of the object is too low")
+            # median_intensity_gt = compute_median_intensity(gt_masks[gt_idx], image)
+            wt_on_mask = wt_mask * pred_masks[pred_idx].detach().cpu().numpy() / np.sum(pred_masks[pred_idx].detach().cpu().numpy())
+            wt_count = np.sum(wt_on_mask)
+            # print("wt_count", wt_count)
+            # print(str(all_pred_classes[pred_idx]), wt_classes)
+            if wt_count > 0.6 and all_pred_classes[pred_idx] in wt_classes: 
+                print("Fainter mask")
+            #     print("wt_count", wt_count)
+            #     plt.imshow(pred_masks[pred_idx][0].detach().cpu().numpy())
+            #     plt.show()
+            #     plt.close()
+            #     plt.imshow(image)
+            #     plt.show()
+            #     plt.close()
+            #     plt.imshow(wt_on_mask[0])
+            #     plt.show()
+            #     plt.close()
                 dice_loss = dice_loss_yolo
                 focal_loss = focal_loss_yolo
                 good_mask = yolo_pred_masks[pred_idx]
