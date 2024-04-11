@@ -1,26 +1,33 @@
 import sys
 import torch
 import cv2
+import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime
 sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-master/')
 from mobile_sam import sam_model_registry, SamPredictor
-from .data_preprocess import preprocess_utils
-from .dataset import dataset_utils
-from .class_agnostic_sam_predictor import predictor_utils
+from dataset import dataset_utils
+from sam_predictor import predictor_utils
+from ultralytics import YOLO, RTDETR
+from astropy.io import fits
+from photutils.background import Background2D, MedianBackground
+from astropy.stats import SigmaClip
 
-from ultralytics import YOLO
-
-class YoloSamPipeline:
-	def __init__(self, device, yolo_checkpoint, sam_checkpoint):
+class YoloSam:
+	def __init__(self, device, yolo_checkpoint, sam_checkpoint, model_type='vit_t'):
 		self.device = device
 		self.yolo_checkpoint = yolo_checkpoint
 		self.sam_checkpoint = sam_checkpoint
-
+		self.classes = {0: ('central-ring', (1,252,214)), 1:('smoke-ring', (159,21,100)), 2:('star-loop', (255, 188, 248))}
+    
 		# Step 1: Object detection with YOLO
-		self.yolo_model = YOLO(self.yolo_checkpoint) 
+		if 'detr' in yolo_checkpoint:
+			self.yolo_model = RTDETR(self.yolo_checkpoint) 
+		else:
+			self.yolo_model = YOLO(self.yolo_checkpoint) 
 
 		# Step 2: Instance segmentation with SAM on detected objects
-		self.mobile_sam_model, self.sam_predictor = self.load_sam_model()
+		self.mobile_sam_model, self.sam_predictor = self.load_sam_model(model_type)
 
 	def load_sam_model(self, model_type="vit_t"):
 		mobile_sam_model = sam_model_registry[model_type](checkpoint=self.sam_checkpoint)
@@ -32,25 +39,32 @@ class YoloSamPipeline:
 	@torch.no_grad()
 	def run_predict(self, image_path):
 
+		start_time = datetime.now()
 		image = cv2.imread(image_path)
 		image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+		self.background_subtraction(image[:,:,0])
+		# image = np.stack((self.background_subtraction(image[:,:,0]),) * 3, axis=-1)
+		# print(np.min(image), np.max(image))
+		# image = cv2.cvtColor(self.background_subtraction(image[:,:,0]), cv2.COLOR_GRAY2BGR)
 		obj_results = self.yolo_model.predict(image_path, verbose=False, conf=0.2) 
 		self.sam_predictor.set_image(image)
 		# sets a specific mean for each image
-		# image_T = np.transpose(image, (2, 1, 0))
-		# mean_ = np.mean(image_T[image_T>0])
-		# std_ = np.std(image_T[image_T>0]) 
-		# pixel_mean = torch.as_tensor([mean_, mean_, mean_], dtype=torch.float, device=device)
-		# pixel_std = torch.as_tensor([std_, std_, std_], dtype=torch.float, device=device)
+		image_T = np.transpose(image, (2, 1, 0))
+		mean_ = np.mean(image_T[image_T>0])
+		std_ = np.std(image_T[image_T>0]) 
+		pixel_mean = torch.as_tensor([mean_, mean_, mean_], dtype=torch.float, device=self.device)
+		pixel_std = torch.as_tensor([std_, std_, std_], dtype=torch.float, device=self.device)
 
-		# mobile_sam_model.register_buffer("pixel_mean", torch.Tensor(pixel_mean).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
-		# mobile_sam_model.register_buffer("pixel_std", torch.Tensor(pixel_std).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
+		self.mobile_sam_model.register_buffer("pixel_mean", torch.Tensor(pixel_mean).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
+		self.mobile_sam_model.register_buffer("pixel_std", torch.Tensor(pixel_std).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
 			
 		if len(obj_results[0]) == 0:
-			# No objects detected
+			print("No objects detected. Check model configuration or input image.")
 			return None
 
 		input_boxes1 = obj_results[0].boxes.xyxy
+		predicted_classes = obj_results[0].boxes.cls
+		colours = [self.classes[i.item()][1] for i in predicted_classes]
 		expand_by = 1.5
 		enlarged_bbox = input_boxes1.clone() 
 		enlarged_bbox[:, :2] -= expand_by  
@@ -63,33 +77,85 @@ class YoloSamPipeline:
 
 		image_embedding=self.sam_predictor.features
 		prompt_embedding=self.mobile_sam_model.prompt_encoder.get_dense_pe()
-		non_resized_masks = obj_results[0].masks.data.cpu().numpy()
 
 		sparse_embeddings, dense_embeddings = self.mobile_sam_model.prompt_encoder(
 				points=None,
 				boxes=input_boxes,
 				masks=None,)
 
-		low_res_masks, _ = self.mobile_sam_model.mask_decoder(
+		low_res_masks, iou_predictions = self.mobile_sam_model.mask_decoder(
 								image_embeddings=image_embedding,
 								image_pe=prompt_embedding,
 								sparse_prompt_embeddings=sparse_embeddings,
 								dense_prompt_embeddings=dense_embeddings,
-								multimask_output=False,
+								multimask_output=True,
 							)
-  
-		low_res_masks=self.sam_predictor.model.postprocess_masks(low_res_masks, self.sam_predictor.input_size, self.sam_predictor.original_size)
-		threshold_masks = torch.sigmoid(low_res_masks - self.mobile_sam_model.mask_threshold) 
+		max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256))
+		max_ious = torch.zeros((iou_predictions.shape[0], 1))
+
+		# Take all low_res_mask correspnding to the index of max_iou
+		for i in range(low_res_masks.shape[0]):
+			max_iou_index = torch.argmax(iou_predictions[i])
+			max_low_res_masks[i] = low_res_masks[i][max_iou_index].unsqueeze(0)
+			max_ious[i] = iou_predictions[i][max_iou_index]
+			
+		low_res_masks = max_low_res_masks
+		iou_predictions = max_ious
+		print('Number of object detected:', len(iou_predictions))
+		print('Iou predictions:', iou_predictions.flatten())
+		print("Unique classes detected:", len(predicted_classes.unique()))
+		for predicted_class in predicted_classes.unique():
+			rgb = self.classes[predicted_class.item()][1]
+			label = self.classes[predicted_class.item()][0]
+			escape_code = f'\x1b[48;2;{rgb[0]};{rgb[1]};{rgb[2]}m \x1b[0m'
+			print(escape_code+escape_code, label, end='\n\n')
+   
+		low_res_masks=self.sam_predictor.model.postprocess_masks(
+      	   low_res_masks, 
+           self.sam_predictor.input_size, 
+           self.sam_predictor.original_size).to(self.device)
+
+		# Apply Gaussian filter on logits
+		kernel_size, sigma = 5, 2
+		gaussian_kernel = predictor_utils.create_gaussian_kernel(kernel_size, sigma).to(self.device)
+		pred_masks = torch.nn.functional.conv2d(low_res_masks, gaussian_kernel, padding=kernel_size//2)
+		threshold_masks = torch.sigmoid(10 * (pred_masks - self.mobile_sam_model.mask_threshold)) # sigmoid with steepness
 		sam_mask_pre = (threshold_masks > 0.5)*1.0
+		print("Inference time:", datetime.now()-start_time)
 		sam_mask.append(sam_mask_pre.squeeze(1))
+		sam_masks_numpy = sam_mask[0].detach().cpu().numpy()
   
+		if len(sam_masks_numpy) == 0:
+			print("No masks detected. Check model configuration or input image.")
+			return None
+
 		fig, axes = plt.subplots(1, 2, figsize=(18, 6)) 
 
 		# Plot 4: SAM Masks
-		sam_masks_numpy = sam_mask[0].detach().cpu().numpy()
-		axes[3].imshow(image)
-		predictor_utils.show_masks(sam_masks_numpy, axes[3], random_color=True)
-		axes[3].set_title('MobileSAM predicted masks')
+		axes[0].imshow(image)
+		axes[0].set_title('Image')
+		
+		axes[1].imshow(image)
+		dataset_utils.show_masks(sam_masks_numpy, axes[1], random_color=False, colours=colours)
+		axes[1].set_title('Yolo-SAM predicted masks')
 		plt.tight_layout() 
 		# plt.savefig(f'./plots/combined_plots.png')
 		plt.show()
+		return sam_mask_pre, obj_results
+  
+	def background_subtraction(self, image_data):
+
+		sigma_clip = SigmaClip(sigma=5.)
+		bkg_estimator = MedianBackground()
+		box_size = (50, 50)
+
+		bkg = Background2D(image_data, box_size, filter_size=(3, 3),
+						sigma_clip=sigma_clip, bkg_estimator=bkg_estimator)
+
+		background_image = bkg.background
+
+		image_data_subtracted = image_data + background_image
+		plt.imshow(image_data_subtracted, cmap='gray')
+		plt.show()
+		plt.close()
+		return image_data_subtracted
