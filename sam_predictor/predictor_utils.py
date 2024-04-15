@@ -14,6 +14,52 @@ from typing import List, Dict, Any, Optional, Tuple
 import torch.nn as nn
 
 
+def transform_image(model, transform, image, k, device):
+    
+        # sets a specific mean for each image
+        image_T = np.transpose(image, (2, 1, 0))
+        mean_ = np.mean(image_T[image_T>0])
+        std_ = np.std(image_T[image_T>0]) 
+        pixel_mean = torch.as_tensor([mean_, mean_, mean_], dtype=torch.float, device=device)
+        pixel_std = torch.as_tensor([std_, std_, std_], dtype=torch.float, device=device)
+        # print(pixel_mean, pixel_std)
+        # plt.imshow(image)
+        # plt.show()
+        # plt.close()
+        model.register_buffer("pixel_mean", torch.Tensor(pixel_mean).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
+        model.register_buffer("pixel_std", torch.Tensor(pixel_std).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
+
+        transformed_data = {}
+        negative_mask = np.where(image > 0, True, False)
+        negative_mask = torch.from_numpy(negative_mask)  
+        negative_mask = negative_mask.permute(2, 0, 1)
+        negative_mask = resize(negative_mask, [1024, 1024], antialias=True) 
+        negative_mask = negative_mask.unsqueeze(0)
+        # scales the image to 1024x1024 by longest side 
+        input_image = transform.apply_image(image)
+        input_image_torch = torch.as_tensor(input_image, device=device)
+        transformed_image = input_image_torch.permute(2, 0, 1).contiguous()[None, :, :, :]
+        
+        # normalization and padding
+        input_image = model.preprocess(transformed_image)
+        original_image_size = image.shape[:2]
+        input_size = tuple(transformed_image.shape[-2:])
+        input_image[~negative_mask] = 0
+        transformed_data['image'] = input_image
+        transformed_data['input_size'] = input_size 
+        transformed_data['image_id'] = k
+        transformed_data['original_image_size'] = original_image_size
+    
+        return transformed_data
+    
+    
+def check_requires_grad(model, show=True):
+    for name, param in model.named_parameters():
+        if param.requires_grad and show:
+            print("✅ Param", name, " requires grad.")
+        elif param.requires_grad == False:
+            print("❌ Param", name, " doesn't require grad.")
+
 def dice_loss_numpy(pred, target, area=None, smooth = 1): 
     pred_flat = pred.flatten()
     target_flat = target.flatten()
@@ -26,27 +72,36 @@ def dice_loss_numpy(pred, target, area=None, smooth = 1):
     
     return dice_loss
 
+def create_gaussian_kernel(kernel_size=5, sigma=2, in_channels=1, out_channels=1):
+        """Generate a 2D Gaussian kernel."""
+        # Create a coordinate grid
+        x_coord = torch.arange(kernel_size)
+        x_grid = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
+        y_grid = x_grid.t()
+        xy_grid = torch.stack([x_grid, y_grid], dim=-1)
+        
+        mean = (kernel_size - 1) / 2.
+        variance = sigma ** 2.
+        
+        # Calculate the 2-dimensional gaussian kernel
+        gaussian_kernel = (1./(2.*np.pi*variance)) *\
+                        torch.exp(
+                            -torch.sum((xy_grid - mean)**2., dim=-1) /\
+                            (2*variance)
+                        )
+        # Make sure the sum of values in the gaussian kernel equals 1.
+        gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
+        
+        # Reshape to 2d depthwise convolutional weight
+        gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size)
+        gaussian_kernel = gaussian_kernel.repeat(out_channels, in_channels, 1, 1)
+        
+        return gaussian_kernel
+
 def dice_loss_numpyy(pred_mask, gt_mask):
     smooth = 1.0 
     intersection = torch.sum(pred_mask * gt_mask)
     return 1 - ((2. * intersection + smooth) / (torch.sum(pred_mask) + torch.sum(gt_mask) + smooth))
-
-def compute_loss(gt_masks, pred_masks):
-    if gt_masks.size == 0:
-        return 0 
-    if pred_masks.size == 0:
-        return 1
-    losses = []
-    for gt_mask in gt_masks:
-        mask_losses = []
-        max_iou = 0.0
-        mask_loss = 0.5
-        for pred_mask in pred_masks:
-            iou = np.sum(pred_mask.flatten() * gt_mask.flatten())
-            if iou > max_iou:
-                mask_loss = dice_loss_numpy(pred_mask, gt_mask)
-        losses.append(mask_loss)
-    return np.mean(losses) 
 
 def remove_masks(
     sam_result: List[Dict[str, Any]], 
@@ -354,3 +409,4 @@ def MobileSAM_predict(image_path: str,
             image.save(output_path)
 
     return image, model_result
+
