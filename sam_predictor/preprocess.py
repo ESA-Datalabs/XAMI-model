@@ -1,8 +1,4 @@
-import os
-from collections import defaultdict
 import torch
-import segment_anything
-from segment_anything.utils.transforms import ResizeLongestSide
 from torchvision.transforms.functional import resize
 import numpy as np
 
@@ -40,3 +36,4 @@ def transform_image(model, transform, image, k, device):
         transformed_data['original_image_size'] = original_image_size
     
         return transformed_data
+

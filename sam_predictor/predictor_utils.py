@@ -1,18 +1,13 @@
-from tkinter import font
 import traceback
 import numpy as np
 import cv2
 from PIL import Image
 import supervision as sv
-from astropy.io import fits
 import matplotlib.pyplot as plt
 import torch
-import data_preprocess
-from data_preprocess.preprocess_utils import data_norm
 from torchvision.transforms.functional import resize
 from typing import List, Dict, Any, Optional, Tuple
 import torch.nn as nn
-
 
 def transform_image(model, transform, image, k, device):
     
