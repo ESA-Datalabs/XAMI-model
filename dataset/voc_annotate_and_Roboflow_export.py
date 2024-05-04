@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ET
 import numpy as np
 from skimage import measure
-from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 from xml.dom import minidom
 
 def binary_image_to_polygon(binary_image):
@@ -29,7 +28,7 @@ def plot_polygon(polygon, image):
         plt.show()
 
 # works well for COCO to VOC annotations conversion
-def create_annotation(filename, width, height, depth, objects):
+def create_annotation(filename, width, height, depth, objects,  offset=1.5):
     annotation = ET.Element('annotation')
 
     ET.SubElement(annotation, "folder").text = ''
@@ -62,8 +61,8 @@ def create_annotation(filename, width, height, depth, objects):
         polygon = ET.SubElement(object_elem, 'polygon')
         for i in range(0, len(obj['segmentations']), 2):
 
-            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i]+1.5) # + n this is added for alignemnt
-            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i+1]+1.5)  # + n this is added for alignemnt
+            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i]+ offset) # + n this is added for alignemnt
+            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i+1]+ offset)  # + n this is added for alignemnt
     xml_str = ET.tostring(annotation, encoding='utf-8')
 
     dom = minidom.parseString(xml_str)
@@ -74,7 +73,7 @@ def create_annotation(filename, width, height, depth, objects):
     print(" Generated xml with annotations in VOC format. Check the coordinates! ")
 
 # works well for Segment Anything annotations
-def create_annotation_SAM(filename, width, height, depth, objects):
+def create_annotation_SAM(filename, width, height, depth, objects, offset=1.5):
     annotation = ET.Element('annotation')
 
     ET.SubElement(annotation, "folder").text = ''
@@ -107,8 +106,8 @@ def create_annotation_SAM(filename, width, height, depth, objects):
         polygon = ET.SubElement(object_elem, 'polygon')
         for i in range(0, len(obj['segmentations']), 2):
 
-            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i+1]+1.5) # + n this is added for alignemnt
-            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i]+1.5)  # + n this is added for alignemnt
+            ET.SubElement(polygon, f'x{i//2+1}').text = str(obj['segmentations'][i+1]+offset) # offset is added for alignemnt
+            ET.SubElement(polygon, f'y{i//2+1}').text = str(obj['segmentations'][i]+offset)  # offset is added for alignemnt
     xml_str = ET.tostring(annotation, encoding='utf-8')
 
     dom = minidom.parseString(xml_str)
