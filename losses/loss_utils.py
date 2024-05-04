@@ -14,28 +14,6 @@ def iou_single(pred_mask, gt_mask):
     else:
         return intersection / union
 
-def compute_median_intensity(mask, image):
-    """
-    Compute the median intensity for the object represented by the mask.
-    
-    Parameters:
-    - mask: Binary mask of the object (Tensor of shape [1, H, W])
-    - image: Image tensor corresponding to the mask (Tensor of shape [H, W, C])
-    
-    Returns:
-    - median_intensity: median intensity of the object
-    """
-    
-    mask = mask.squeeze(0).unsqueeze(2).repeat(1, 1, 3)
-    object_pixels = image * mask.detach().cpu().numpy()
-    
-    median_intensity = np.median(object_pixels[object_pixels>0])/image.shape[0]
-    plt.imshow(image * mask.detach().cpu().numpy())
-    plt.show()
-    plt.close()
-    
-    return median_intensity
-	
 def compute_iou_matrix(pred_masks, gt_masks):
     """
     Compute a matrix of IoU scores for each pair of predicted and GT masks.
@@ -173,26 +151,26 @@ def segm_loss_match_hungarian_compared(
         good_mask = pred_masks[pred_idx]
         if wt_mask is not None and wt_classes is not None:
             # check if the original image bounded by the ground truth mask has a higher average intensity than the predicted mask
-            # median_intensity_gt = compute_median_intensity(gt_masks[gt_idx], image)
             wt_on_mask = wt_mask * pred_masks[pred_idx].detach().cpu().numpy() / np.sum(pred_masks[pred_idx].detach().cpu().numpy())
             wt_count = np.sum(wt_on_mask)
             # print("wt_count", wt_count)
             # print(str(all_pred_classes[pred_idx]), wt_classes)
-            if wt_count > 0.6 and all_pred_classes[pred_idx] in wt_classes: 
-                print("Fainter mask")
-            #     print("wt_count", wt_count)
-            #     plt.imshow(pred_masks[pred_idx][0].detach().cpu().numpy())
-            #     plt.show()
-            #     plt.close()
-            #     plt.imshow(image)
-            #     plt.show()
-            #     plt.close()
-            #     plt.imshow(wt_on_mask[0])
-            #     plt.show()
-            #     plt.close()
-                dice_loss = dice_loss_yolo
-                focal_loss = focal_loss_yolo
-                good_mask = yolo_pred_masks[pred_idx]
+            # if wt_count > 0.6 and all_pred_classes[pred_idx] in wt_classes: 
+            #     # print("Fainter mask")
+            # #     print("wt_count", wt_count)
+            # #     plt.imshow(pred_masks[pred_idx][0].detach().cpu().numpy())
+            # #     plt.show()
+            # #     plt.close()
+            # #     plt.imshow(image)
+            # #     plt.show()
+            # #     plt.close()
+            # #     plt.imshow(wt_on_mask[0])
+            # #     plt.show()
+            # #     plt.close()
+            
+            #     dice_loss = dice_loss_yolo # will be 0 at back-propagation
+            #     focal_loss = focal_loss_yolo
+            #     good_mask = yolo_pred_masks[pred_idx]
                 
         # good_mask = pred_masks[pred_idx]
         # if dice_loss_yolo+focal_loss_yolo > dice_loss+focal_loss: # if yolo mask is better (usually it is better than SAM for very faint objects)
@@ -217,11 +195,11 @@ def segm_loss_match_hungarian_compared(
         #     focal_loss = focal_loss_yolo
         #     good_mask = yolo_pred_masks[pred_idx]
 
-        preds.append(good_mask)
-        gts.append(gt_masks[gt_idx])
+        preds.append(good_mask.detach().cpu().numpy())
+        gts.append(gt_masks[gt_idx].detach().cpu().numpy())
         pred_classes.append(int(all_pred_classes[pred_idx]))
         gt_classes.append(all_gt_classes[gt_idx])
-        iou_scores_sam.append(iou_scores[pred_idx])
+        iou_scores_sam.append(iou_scores[pred_idx].detach().cpu().numpy())
         # median_intensity = compute_median_intensity(gt_masks[gt_idx], image) # weight the loss by object intensity
             
         if mask_areas is not None:
@@ -231,7 +209,6 @@ def segm_loss_match_hungarian_compared(
     # Normalize the losses
     mean_dice_loss = total_dice_loss / len(row_ind)
     mean_focal_loss = total_focal_loss / len(row_ind)
-
     # Combine losses
     total_loss = mean_dice_loss + 20 * mean_focal_loss
 
@@ -257,11 +234,11 @@ def segm_loss_match_iou_based(
         # Find the ground truth mask with the highest IoU for each predicted mask
         iou_scores = iou_matrix[pred_idx]
         gt_idx = torch.argmax(iou_scores).item()     
-        preds.append(pred_masks[pred_idx])
-        gts.append(gt_masks[gt_idx])
+        preds.append(pred_masks[pred_idx].detach().cpu().numpy())
+        gts.append(gt_masks[gt_idx].detach().cpu().numpy())
         pred_classes.append(int(all_pred_classes[pred_idx]))
         gt_classes.append(all_gt_classes[gt_idx])
-        iou_scores_sam.append(model_iou_scores[pred_idx])
+        iou_scores_sam.append(model_iou_scores[pred_idx].detach().cpu().numpy())
         # median_intensity = compute_median_intensity(gt_masks[gt_idx], image) # weight the loss by object intensity
         dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
         focal_loss = compute_focal_loss(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
