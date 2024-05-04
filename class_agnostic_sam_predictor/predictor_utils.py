@@ -13,48 +13,6 @@ from torchvision.transforms.functional import resize
 from typing import List, Dict, Any, Optional, Tuple
 import torch.nn as nn
 
-def show_mask(mask, ax, random_color=False):
-    if random_color:
-        color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-    else:
-        color = np.array([65/255, 174/255, 255/255, 0.4]) 
-    h, w = mask.shape[-2:]
-    mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-    ax.imshow(mask_image)
-
-def show_masks(masks, ax, random_color=False):
-    for mask in masks:
-        if random_color:
-            color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
-        else:
-                color = np.array([30/255, 144/255, 255/255, 0.6])
-        h, w = mask.shape[-2:]
-        mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
-        ax.imshow(mask_image)
-
-def show_box(box, ax):
-    x0, y0 = box[0], box[1]
-    w, h = box[2] - box[0], box[3] - box[1]
-    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='orange', facecolor=(0,0,0,0), lw=2))    
-
-def mask_and_plot_image(fits_file, plot_ = False):
-    with fits.open(fits_file) as hdul:
-        data = hdul[0].data
-
-    data = np.flipud(data)
-    mask = data <= 0    
-    if plot_ and len(data[data>0])>=1:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
-        ax1.imshow(data, cmap='gray', norm = data_norm(data[data>0]))
-        ax1.set_title(f'{fits_file.split("/")[-1].split(".")[0]}')
-        ax1.axis('off')
-        ax2.imshow(255-mask, cmap='gray')
-        ax2.set_title('Negative pixels map')
-        ax2.axis('off')
-        plt.savefig(f'./negative_mask.png')
-        plt.show()
-        plt.close()      
-    return mask
 
 def dice_loss_numpy(pred, target, area=None, smooth = 1): 
     pred_flat = pred.flatten()
