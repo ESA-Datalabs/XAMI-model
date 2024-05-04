@@ -1,22 +1,3 @@
----
-language: en
-license: mit
-datasets:
-- iulia-elisa/AstroArtefactToolkit_XMMoptical
-model-index:
-- name: xmm_om_model
-  results:
-  - task:
-      name: Instance Segmentation
-      type: instance-segmentation
-    dataset:
-      name: AstroArtefactToolkit_XMMoptical 
-      type: AstroArtefactToolkit_XMMoptical
-    metrics:
-       - name: Accuracy
-         type: accuracy
-         value: model_accuracy
----
 # XMM_OM_AI Deep Learning project
 
 The code uses images from the XMM-Newton's Opical Monitor. The image windows are stacked (2048x2048) and rebinned to 512x512.
@@ -49,7 +30,15 @@ from YoloSamPipeline import YoloSam
 yolo_path = 'path/to/yolo/checkpoint' 
 mobile_sam_path = 'path/to/mobile_sam/checkpoint' 
 
-yolo_sam_pipe = YoloSam('cuda', yolo_path, mobile_sam_path ) # or cpu
+# load the models
+yolo_sam_pipeline = YoloSam(
+    device='cuda:0', 
+    yolo_checkpoint=yolo_path, 
+    sam_checkpoint='./output_sam/ft_mobile_sam_final_2024-04-27 00:02:11.627528_last.pth', # the checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
+    model_type='vit_t',
+    efficient_vit_enc=None,
+    yolo_conf=0.3)
+# predict
 yolo_sam_pipe.run_predict('path/to/image')
 ```
 
