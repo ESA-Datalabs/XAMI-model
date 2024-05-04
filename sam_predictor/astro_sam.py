@@ -1,3 +1,4 @@
+from sympy import N
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -5,7 +6,7 @@ from pycocotools import mask as maskUtils
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 import cv2
-from losses import loss
+from losses import loss_utils
 from dataset import dataset_utils
 from segment_anything.utils.transforms import ResizeLongestSide
 import matplotlib.pyplot as plt
@@ -36,7 +37,7 @@ class AstroSAM:
         negative_mask, 
         input_image, 
         cr_transforms=None, 
-        show_plot=True):
+        show_plot=False):
 
         ious = []
         image_loss=[]
@@ -89,6 +90,10 @@ class AstroSAM:
         del box_torch, coords_torch, labels_torch, masks
         torch.cuda.empty_cache()
         
+        if torch.isnan(image_embedding).any(): # !!!!!!!!!!!!!
+            print('NAN in image_embedding')
+            return 0.5 # image loss for now
+        
         low_res_masks, iou_predictions = self.model.mask_decoder( # iou_pred [N, 1] where N - number of masks
         image_embeddings=image_embedding,
         image_pe=self.model.prompt_encoder.get_dense_pe(),
@@ -96,6 +101,7 @@ class AstroSAM:
         dense_prompt_embeddings=dense_embeddings,
         multimask_output=True, # True value works better for ambiguous prompts (single points)
         )
+        
         max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256))
         max_ious = torch.zeros((iou_predictions.shape[0], 1))
         
@@ -119,15 +125,14 @@ class AstroSAM:
         total_mask_areas = np.array(mask_areas).sum()
 
         for i in range(threshold_masks.shape[0]):
-            iou_per_mask = loss.iou_single(threshold_masks[i][0], gt_threshold_masks[i])
+            iou_per_mask = loss_utils.iou_single(threshold_masks[i][0], gt_threshold_masks[i])
             ious.append(iou_per_mask)
             iou_image_loss.append((torch.abs(iou_predictions.permute(1, 0)[0][i] - iou_per_mask)) * mask_areas[i]/total_mask_areas)
 
         # compute weighted dice loss (smaller weights on smaller objects)
-        focal = loss.focal_loss_per_mask_pair(torch.squeeze(pred_masks, dim=1), gt_threshold_masks, mask_areas)
-        dice = loss.dice_loss_per_mask_pair(torch.squeeze(threshold_masks, dim=1), gt_threshold_masks, mask_areas) 
+        focal = loss_utils.focal_loss_per_mask_pair(torch.squeeze(pred_masks, dim=1), gt_threshold_masks, mask_areas)
+        dice = loss_utils.dice_loss_per_mask_pair(torch.squeeze(threshold_masks, dim=1), gt_threshold_masks, mask_areas) 
         mse = F.mse_loss(threshold_masks.squeeze(1), gt_threshold_masks)
-        # print("DICE loss", dice, "Focal loss", focal, "MSE loss", mse_loss)
         image_loss.append(5 * mse + dice) # used in SAM paper
     
         # image_loss.append(20 * focal + dice) # used in SAM paper
@@ -184,7 +189,6 @@ class AstroSAM:
             
         #         plt.show()
         #         plt.close()
-        #     print(f'{k.split(".")[0]}')
         #     fig, axs = plt.subplots(1, 3, figsize=(40, 20))
         #     axs[0].imshow(input_image)
         #     axs[0].set_title(f'{k.split(".")[0]}', fontsize=40)
@@ -196,7 +200,7 @@ class AstroSAM:
         #     axs[2].imshow(input_image) 
         #     dataset_utils.show_masks(threshold_masks.permute(1, 0, 2, 3)[0].detach().cpu().numpy(), axs[2], random_color=False)
         #     axs[2].set_title('Pred masks', fontsize=40)
-            
+        #     plt.savefig(f'/workspace/raid/OM_DeepLearning/XMM_OM_code_git/{k.split(".")[0]}_masks.png')
         #     plt.show()
         #     plt.close()
             
@@ -349,7 +353,7 @@ class AstroSAM:
             total_mask_areas = np.array(mask_areas).sum()
             for i in range(threshold_masks.shape[0]):
                 if len(gt_threshold_masks)>0:
-                    iou_per_mask = loss.iou_single(threshold_masks[i][0], gt_threshold_masks[i])
+                    iou_per_mask = loss_utils.iou_single(threshold_masks[i][0], gt_threshold_masks[i])
                     ious.append(iou_per_mask)
                     iou_image_loss.append((torch.abs(iou_predictions.permute(1, 0)[0][i] - iou_per_mask)) * mask_areas[i]/total_mask_areas)
                 else:
@@ -357,8 +361,8 @@ class AstroSAM:
                     iou_image_loss.append(0.0)
                     
             # compute weighted dice loss (smaller weights on smaller objects)
-            focal = loss.focal_loss_per_mask_pair(torch.squeeze(pred_masks, dim=1), gt_threshold_masks, mask_areas)
-            dice = loss.dice_loss_per_mask_pair(torch.squeeze(threshold_masks, dim=1), gt_threshold_masks, mask_areas) 
+            focal = loss_utils.focal_loss_per_mask_pair(torch.squeeze(pred_masks, dim=1), gt_threshold_masks, mask_areas)
+            dice = loss_utils.dice_loss_per_mask_pair(torch.squeeze(threshold_masks, dim=1), gt_threshold_masks, mask_areas) 
             mse = F.mse_loss(threshold_masks.squeeze(1), gt_threshold_masks)
             # print("DICE loss", dice, "Focal loss", focal, "MSE loss", mse_loss)
             image_loss.append(5 * mse + dice) # used in SAM paper
@@ -414,10 +418,13 @@ class AstroSAM:
         gt_bboxes, 
         optimizer, 
         mode,
-        cr_transforms = None):
+        cr_transforms = None,
+        scheduler=None,
+        ):
         
         assert mode in ['train', 'validate'], "Mode must be 'train' or 'validate'"
         losses = []
+        back_step = 0
 
         for inputs in tqdm(dataloader, desc=f'{mode[0].upper()+mode[1:]} Progress', bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
             batch_loss = 0.0
@@ -458,16 +465,26 @@ class AstroSAM:
                         print(f"{inputs['image_id'][i]} has no annotations❗️")
                     
             if mode == 'train':
+                back_step+=1
                 optimizer.zero_grad()
                 batch_loss.backward()
                 optimizer.step()
-
+                
+                if scheduler is not None and back_step<10:  # this back_step should be removed
+                    scheduler.step()
+                    print("Current LR:", optimizer.param_groups[0]['lr'])
+                    
                 del image_embedding, negative_mask, input_image, image
                 torch.cuda.empty_cache()
 
                 losses.append(batch_loss.item()/batch_size) #/loss_scaling_factor)
             else:
-                losses.append(batch_loss.detach().cpu()/batch_size) #/loss_scaling_factor)
+                # check if batch loss is float 
+                if isinstance(batch_loss, float):
+                    losses.append(batch_loss/batch_size)
+                else:
+                    losses.append(batch_loss.detach().cpu().numpy()/batch_size)
+                del batch_loss, image_embedding, negative_mask, input_image, image
 			
         return np.mean(losses), self.model
         
@@ -489,7 +506,7 @@ class AstroSAM:
 
         epoch_sam_loss = []
         epoch_yolo_loss = []
-        all_preds, all_gts, all_pred_cls, all_gt_cls, all_iou_scores, mask_areas = [], [], [], [], [], []
+        all_preds, all_gts, all_pred_cls, all_gt_cls, all_iou_scores, all_mask_areas, pred_images = [], [], [], [], [], [], []
         for batch_idx in tqdm(range(num_batches), desc=f'{phase[0].upper()+phase[1:]} Progress', bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
             start_idx = batch_idx * batch_size
             end_idx = start_idx + batch_size
@@ -516,18 +533,11 @@ class AstroSAM:
                 self.model.register_buffer("pixel_mean", torch.Tensor(pixel_mean).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
                 self.model.register_buffer("pixel_std", torch.Tensor(pixel_std).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
                 
-                # elif len(obj_results[0]) > 0 and len(gt_masks) == 0:
-                #     print("False positives❗️")
-                #     del obj_results
-                #     continue
-                # elif len(obj_results[0]) == 0 and len(gt_masks) >0:
-                #     print("False negatives")
-                #     del obj_results
-                #     continue
                 gt_masks = yolo_predictor_utils.get_masks_from_image(images_dir, image_name) 
                 gt_classes = yolo_predictor_utils.get_classes_from_image(images_dir, image_name) 
+
                 if len(obj_results[0]) == 0 or len(gt_masks) == 0:
-                    print("No object detected in the image❗️")
+                    # print("No object detected in the image❗️")
                     del obj_results, pixel_mean, pixel_std, image_T
                     continue
 
@@ -563,6 +573,8 @@ class AstroSAM:
                                     multimask_output=True,
                                 )
                         
+                    self.predictor.reset_image() 
+                    
                     max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256)).to(self.device)
                     max_ious = torch.zeros((iou_predictions.shape[0], 1))
                   
@@ -594,7 +606,7 @@ class AstroSAM:
                     #     iou_predictions,
                     #     mask_areas)
                     
-                    segm_loss_yolo, preds_yolo, gts_yolo, gt_classes_match_yolo, pred_classes_match_yolo, ious_match_yolo = loss.segm_loss_match_iou_based(
+                    segm_loss_yolo, preds_yolo, gts_yolo, gt_classes_match_yolo, pred_classes_match_yolo, ious_match_yolo = loss_utils.segm_loss_match_iou_based(
                         yolo_masks_tensor, 
                         gt_masks_tensor, 
                         obj_results[0].boxes.cls.detach().cpu().numpy(), 
@@ -602,7 +614,7 @@ class AstroSAM:
                         iou_predictions,
                         mask_areas)
                     
-                    segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match  = loss.segm_loss_match_hungarian_compared(
+                    segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match  = loss_utils.segm_loss_match_hungarian_compared(
                         threshold_masks,
                         yolo_masks_tensor, 
                         gt_masks_tensor, 
@@ -614,12 +626,14 @@ class AstroSAM:
                         wt_mask=wt_mask,
                         mask_areas=mask_areas)
                     
-                    threshold_preds = np.array([preds[i][0].detach().cpu().numpy()>0.5*1 for i in range(len(preds))])
+                    threshold_preds = np.array([preds[i][0]>0.5*1 for i in range(len(preds))])
                     all_preds.append(threshold_preds)
                     all_gts.append(gts)
                     all_gt_cls.append(gt_classes_match)
                     all_pred_cls.append(pred_classes_match)
                     all_iou_scores.append(ious_match)
+                    all_mask_areas.append(mask_areas)
+                    pred_images.append(image_name)
                     
                     batch_losses_sam.append(segm_loss_sam)
                     batch_losses_yolo.append(segm_loss_yolo)
@@ -659,6 +673,10 @@ class AstroSAM:
                     #     # plt.savefig(f'./plots/combined_plots.png')
                     #     plt.show()
 
+                    del obj_results, pixel_mean, pixel_std, image_T, image, sam_mask, yolo_masks, input_boxes, input_boxes1
+                    del threshold_preds, preds, gts, gt_classes_match, pred_classes_match, ious_match
+                    torch.cuda.empty_cache()
+                    
             mean_loss_sam = torch.mean(torch.stack(batch_losses_sam))
             mean_loss_yolo = torch.mean(torch.stack(batch_losses_yolo))
             epoch_sam_loss.append(mean_loss_sam.item())
@@ -670,4 +688,5 @@ class AstroSAM:
                 optimizer.step()
 
         # print(f'Epoch {epoch}, {phase.capitalize()} Segmentation loss SAM: {np.mean(epoch_sam_loss)}. YOLO: {np.mean(epoch_yolo_loss)}')
-        return np.mean(epoch_sam_loss), np.mean(epoch_yolo_loss), all_preds, all_gts, all_gt_cls, all_pred_cls, all_iou_scores
+        
+        return np.mean(epoch_sam_loss), np.mean(epoch_yolo_loss), all_preds, all_gts, all_gt_cls, all_pred_cls, all_iou_scores, all_mask_areas, pred_images
