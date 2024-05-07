@@ -15,7 +15,7 @@ class COCOToYOLOConverter:
         self.plot_yolo_masks = plot_yolo_masks
         
         with open(os.path.join(self.input_path, annotations_file)) as f:
-            self.train_data = json.load(f)
+            self._data = json.load(f)
 
         self.file_names = []
         
@@ -26,12 +26,12 @@ class COCOToYOLOConverter:
             os.mkdir(self.output_path)
         if not os.path.exists(self.output_path+'/images/'):
             os.mkdir(self.output_path+'/images/')
-        if not os.path.exists(self.output_path+'labels/'):
+        if not os.path.exists(self.output_path+'/labels/'):
             os.mkdir(self.output_path+'/labels/')
     
     def load_images_from_folder(self, folder):
         count = 0
-        filenames_from_json = list(set([file_['file_name'] for file_ in self.train_data['images']]))
+        filenames_from_json = list(set([file_['file_name'] for file_ in self._data['images']]))
         
         for filename in filenames_from_json:
             if filename.split('.')[-1] in ['jpg', 'jpeg', 'png']: 
@@ -40,7 +40,6 @@ class COCOToYOLOConverter:
         
                 try:
                     shutil.copy(source, destination)
-                    # print(f"File {source} copied successfully.")
                 except shutil.SameFileError:
                     print("Source and destination represent the same file.")
         
@@ -51,14 +50,14 @@ class COCOToYOLOConverter:
     def get_img_ann(self, image_id):
         img_ann = []
         isFound = False
-        for ann in self.train_data['annotations']:
+        for ann in self._data['annotations']:
             if ann['image_id'] == image_id:
                 img_ann.append(ann)
                 isFound = True
         return img_ann if isFound else None
 
     def get_img(self, filename):
-        for img in self.train_data['images']:
+        for img in self._data['images']:
             if img['file_name'] == filename:
                 return img
             
@@ -122,7 +121,7 @@ class COCOToYOLOConverter:
                 segments = []
                 
                 for ann in img_ann:
-                    cls = ann['category_id']
+                    cls = ann['category_id']-1
                     current_category = ann['category_id']
                     flat_points = ann['segmentation'][0]
                     # polygon_points = np.array(flat_points).reshape(-1, 2)
@@ -151,11 +150,12 @@ class COCOToYOLOConverter:
                     # file_object.write(f"{current_category} {x_centre:.6f} {y_centre:.6f} {w:.6f} {h:.6f}\n")
 
                     # Write image segmentation
-                    for i in range(len(segments)):
-                        line = (
-                            *(segments[i]),
-                        ) 
-                        file_object.write(("%g " * len(line)).rstrip() % line + "\n")
+                    
+                for i in range(len(segments)):
+                    line = (
+                        *(segments[i]),
+                    ) 
+                    file_object.write(("%g " * len(line)).rstrip() % line + "\n")
                         
                 if self.plot_yolo_masks:
                     self.plot_segmentation_contours(filename, segments)

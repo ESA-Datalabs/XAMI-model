@@ -1,17 +1,17 @@
 import matplotlib.pyplot as plt
 from astropy.convolution import convolve
-from astropy.visualization import AsinhStretch, LogStretch, ZScaleInterval
+from astropy.visualization import AsinhStretch, LogStretch, ZScaleInterval, simple_norm
 from astropy.visualization.mpl_normalize import ImageNormalize
 from photutils.background import Background2D, SExtractorBackground, MedianBackground, MMMBackground, ModeEstimatorBackground
-from photutils.segmentation import (deblend_sources, detect_sources, make_2dgaussian_kernel)
 from astropy.stats import biweight_location, mad_std, sigma_clipped_stats, SigmaClip
-from photutils.segmentation import detect_threshold, detect_sources
+from photutils.segmentation import detect_threshold,  deblend_sources, detect_sources, make_2dgaussian_kernel, SourceFinder, SourceCatalog
 from photutils.utils import circular_footprint
 import numpy as np
-from photutils.segmentation import SourceFinder, SourceCatalog
 import os
 import cv2
 from astropy.io import fits
+
+
 med = r"$\tilde{x}$"
 biw_loc = r"$\zeta_{\text{biloc}}$"
 
@@ -56,7 +56,6 @@ def image_stretch(data, stretch='log', factor=1):
 	data_log_stretched[positive_mask] = stretch(data[positive_mask])
 
 	return data_log_stretched
-
 
 def rescale_flattened_image(image: np.ndarray, 
                             negative_mask: np.ndarray, 
@@ -321,10 +320,6 @@ def clahe_algo_image(IMAGE_PATH, clipLimit=3.0, tileGridSize=(8,8)):
 
     return final_img
 
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
-
 def enhance_contrast_with_adaptive_thresholding(IMAGE_PATH, clipLimit=3.0, tileGridSize=(8,8)):
     image = cv2.imread(IMAGE_PATH)
     image_bw = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -357,10 +352,6 @@ def enhance_contrast_with_adaptive_thresholding(IMAGE_PATH, clipLimit=3.0, tileG
     plt.show()
 
     return final_img
-
-import cv2
-import numpy as np
-import matplotlib.pyplot as plt
 
 def clahe_algo_image_improved(IMAGE_PATH, clipLimit=1.0, tileGridSize=(4,4), bright_threshold=200):
     image = cv2.imread(IMAGE_PATH.replace(".fits", ".png"))
@@ -400,13 +391,6 @@ def clahe_algo_image_improved(IMAGE_PATH, clipLimit=1.0, tileGridSize=(4,4), bri
     plt.close()
 
     return final_img
-
-from astropy.stats import sigma_clipped_stats
-from astropy.io import fits
-from astropy.visualization import simple_norm
-import matplotlib.pyplot as plt
-import numpy as np
-import cv2
 
 def enhance_astronomical_image(image_path, clipLimit=3.0, tileGridSize=(16,16)):
     with fits.open(image_path) as hdul:
@@ -494,7 +478,6 @@ def selective_clahe_astronomical_image(image_path, clipLimit=3.0, tileGridSize=(
     plt.savefig('./plots/selective_clahe.png')
     
     plt.show()
-
 
 def darken_background(image_path):
     # Load the image

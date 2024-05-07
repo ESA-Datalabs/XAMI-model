@@ -1,5 +1,10 @@
-# get masks from dataset (in YOLOv8 format) given an image file
+from typing import Any, Generator, List
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+from dataset import dataset_utils
 
+# get masks from dataset (in YOLOv8 format) given an image file
 def get_label_file_path(dataset_path, image_location):
     dataset_path = '/'.join(dataset_path.split('/')[:-2])+'/'+'labels'+'/'
     label_file_path = os.path.join(dataset_path, image_location)
@@ -12,7 +17,6 @@ def read_annotations(label_file_path):
     k = 0
     with open(label_file_path, 'r') as file:
         for line in file:
-            print(k+1)
             k+=1
             parts = line.strip().split()
             class_id = int(parts[0])

@@ -19,12 +19,22 @@ from . import preprocess
 from torch.nn.functional import threshold, normalize
 from sam_predictor import predictor_utils
 from yolo_predictor import yolo_predictor_utils
+from .residualAttentionBlock import ResidualAttentionBlock
+import torch.nn as nn
 
 class AstroSAM:
     def __init__(self, model, device, predictor):
         self.model = model
         self.device = device
         self.predictor = predictor
+        
+        # for image embedding [1, 256, 64, 64]
+        residual_block = ResidualAttentionBlock(d_model=256, n_head=8, mlp_ratio=4.0).to(self.device)
+        for param in residual_block.parameters():
+            param.requires_grad = True # this is usually already true
+        
+        residual_block.train()
+        self.residual_block = residual_block    
             
     def one_image_predict(
         self,
@@ -246,8 +256,6 @@ class AstroSAM:
                 
             if len(transformed_masks) > len(transformed_bboxes):
                     
-                print(len(transformed_masks), len(transformed_bboxes), mask_areas)
-                
                 fig, axs = plt.subplots(1, 2, figsize=(40, 20))
                 axs[0].imshow(transformed_image)
                 dataset_utils.show_masks(transformed_masks, axs[0], random_color=False)
@@ -275,8 +283,6 @@ class AstroSAM:
                 axs[1].imshow(transformed_image)
                 plt.show()
                 plt.close()
-                print(transformed_bboxes)
-                print('transformed_masks', transformed_masks.shape, transformed_boxes_from_masks.shape)
                 
             for k in range(len(transformed_masks)): 
                 # prompt_box = np.array(transformed_masks[k])
@@ -326,7 +332,7 @@ class AstroSAM:
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=True, # True value works better for ambiguous prompts (single points)
             )
-            
+                        
             max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256))
             max_ious = torch.zeros((iou_predictions.shape[0], 1))
             
@@ -364,13 +370,10 @@ class AstroSAM:
             focal = loss_utils.focal_loss_per_mask_pair(torch.squeeze(pred_masks, dim=1), gt_threshold_masks, mask_areas)
             dice = loss_utils.dice_loss_per_mask_pair(torch.squeeze(threshold_masks, dim=1), gt_threshold_masks, mask_areas) 
             mse = F.mse_loss(threshold_masks.squeeze(1), gt_threshold_masks)
-            # print("DICE loss", dice, "Focal loss", focal, "MSE loss", mse_loss)
             image_loss.append(5 * mse + dice) # used in SAM paper
-            # image_loss.append(20*focal + dice) # used in SAM paper
             image_loss = torch.stack(image_loss)
             iou_image_loss = torch.stack(iou_image_loss)
             image_loss = torch.mean(image_loss) + torch.mean(iou_image_loss) #* loss_scaling_factor
-            # print('image_loss', image_loss, focal, dice)
             # if show_plot:
             #     for i in range(threshold_masks.shape[0]):
             #         fig, axs = plt.subplots(1, 3, figsize=(40, 20))
@@ -424,7 +427,6 @@ class AstroSAM:
         
         assert mode in ['train', 'validate'], "Mode must be 'train' or 'validate'"
         losses = []
-        back_step = 0
 
         for inputs in tqdm(dataloader, desc=f'{mode[0].upper()+mode[1:]} Progress', bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
             batch_loss = 0.0
@@ -436,9 +438,10 @@ class AstroSAM:
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 original_image_size = image.shape[:-1]
                 input_size = (1024, 1024)
-
+                
                 # IMAGE ENCODER
-                image_embedding = self.model.image_encoder(input_image)
+                image_embedding = self.model.image_encoder(input_image) # [1, 256, 64, 64]
+                # image_embedding = (image_embedding+self.add_residual(input_image))/2.0
                 
                 # negative_mask has the size of the image
                 negative_mask = np.where(image>0, True, False)
@@ -454,23 +457,22 @@ class AstroSAM:
                         if len(image_masks)>0:
                             batch_loss += (self.one_image_predict(image_masks, gt_masks, gt_bboxes, image_embedding, 
                                                             original_image_size, input_size, negative_mask, image, cr_transforms)) 
-                        else:
-                            print(f"{inputs['image_id'][i]} has no annotations❗️")
+                        # else:
+                        #     print(f"{inputs['image_id'][i]} has no annotations❗️")
 
                 if mode == 'train':
                     if len(image_masks)>0:
                         batch_loss += (self.one_image_predict(image_masks, gt_masks, gt_bboxes, image_embedding, 
                                                         original_image_size, input_size, negative_mask, image, cr_transforms)) 
-                    else:
-                        print(f"{inputs['image_id'][i]} has no annotations❗️")
+                    # else:
+                    #     print(f"{inputs['image_id'][i]} has no annotations❗️")
                     
             if mode == 'train':
-                back_step+=1
                 optimizer.zero_grad()
                 batch_loss.backward()
                 optimizer.step()
                 
-                if scheduler is not None and back_step<10:  # this back_step should be removed
+                if scheduler is not None:  # this back_step should be removed
                     scheduler.step()
                     print("Current LR:", optimizer.param_groups[0]['lr'])
                     
@@ -480,6 +482,7 @@ class AstroSAM:
                 losses.append(batch_loss.item()/batch_size) #/loss_scaling_factor)
             else:
                 # check if batch loss is float 
+                self.residual_block.eval()
                 if isinstance(batch_loss, float):
                     losses.append(batch_loss/batch_size)
                 else:
@@ -488,6 +491,29 @@ class AstroSAM:
 			
         return np.mean(losses), self.model
         
+    def add_residual(self, image): # [1, 3, 1024, 1024]
+        
+        transform_layer = nn.Sequential(
+            nn.Conv2d(3, 256, kernel_size=3, stride=4, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, stride=4, padding=1),
+            nn.ReLU()
+        ).to(self.device) # output  [1, 256, 64, 64]
+                
+        image_embedding = transform_layer(image)
+            
+        # Flatten spatial dimensions
+        sequence_length = image_embedding.shape[-2] * image_embedding.shape[-1]
+        batch_size = image_embedding.shape[0]
+        d_model = image_embedding.shape[1]
+
+        # Reshape the tensor to [sequence_length, batch_size, d_model]
+        reshaped_tensor = image_embedding.permute(2, 3, 0, 1).reshape(sequence_length, batch_size, d_model)
+        output_tensor = self.residual_block(reshaped_tensor)
+        residual_image_embedding = output_tensor.view(image_embedding.shape[-2], image_embedding.shape[-1], batch_size, d_model).permute(2, 3, 0, 1)
+        
+        return residual_image_embedding
+
     def run_yolo_sam_epoch(
         self, 
         yolov8_pretrained_model,
