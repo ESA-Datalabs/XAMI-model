@@ -5,8 +5,6 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
-sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-master/')
-from mobile_sam import sam_model_registry, SamPredictor
 from dataset import dataset_utils
 from sam_predictor import predictor_utils
 from ultralytics import YOLO, RTDETR
@@ -86,6 +84,7 @@ class YoloSam:
 		if len(obj_results[0]) == 0:
 			print("No objects detected. Check model configuration or input image.")
 			return None
+		return 1, 2
 
 		input_boxes1 = obj_results[0].boxes.xyxy
 		predicted_classes = obj_results[0].boxes.cls
@@ -176,20 +175,20 @@ class YoloSam:
 		fig, axes = plt.subplots(1, 3, figsize=(20, 8)) 
 		image_copy = image.copy()
 
-		# Plot 4: SAM Masks
-		axes[0].imshow(image)
-		axes[0].set_title('Image')
-		# plot yolobounding boxes on the image with class names and Iou predictions	
+		# # Plot 4: SAM Masks
+		# axes[0].imshow(image)
+		# axes[0].set_title('Image')
+		# # plot yolobounding boxes on the image with class names and Iou predictions	
   
-		for i in range (len(input_boxes1)):
-			dataset_utils.visualize_titles(image_copy, input_boxes1[i], self.classes[predicted_classes[i].item()][0], font_thickness = 1, font_scale=0.35)
-		axes[1].imshow(image_copy)
-		for i in range (len(input_boxes1)):
-			dataset_utils.show_box(input_boxes1[i].detach().cpu().numpy(), axes[1])
-		axes[2].imshow(image)
-		dataset_utils.show_masks(sam_masks_numpy, axes[2], random_color=False, colours=colours)
-		axes[2].set_title('Yolo-SAM predicted masks')
-		plt.tight_layout() 
-		plt.savefig(f'./{image_path.split("/")[-1].replace(".png", "_predicted.png")}')
-		plt.show()
+		# for i in range (len(input_boxes1)):
+		# 	dataset_utils.visualize_titles(image_copy, input_boxes1[i], self.classes[predicted_classes[i].item()][0], font_thickness = 1, font_scale=0.35)
+		# axes[1].imshow(image_copy)
+		# for i in range (len(input_boxes1)):
+		# 	dataset_utils.show_box(input_boxes1[i].detach().cpu().numpy(), axes[1])
+		# axes[2].imshow(image)
+		# dataset_utils.show_masks(sam_masks_numpy, axes[2], random_color=False, colours=colours)
+		# axes[2].set_title('Yolo-SAM predicted masks')
+		# plt.tight_layout() 
+		# # plt.savefig(f'./{image_path.split("/")[-1].replace(".png", "_predicted.png")}')
+		# plt.show()
 		return sam_mask_pre, obj_results # obj_results for further inference 
