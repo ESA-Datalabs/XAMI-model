@@ -9,15 +9,11 @@ import cv2
 from losses import loss_utils
 from dataset import dataset_utils
 from segment_anything.utils.transforms import ResizeLongestSide
-import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from PIL import Image
 import numpy as np
-from dataset import dataset_utils
 from sam_predictor import predictor_utils
 from . import preprocess
 from torch.nn.functional import threshold, normalize
-from sam_predictor import predictor_utils
 from yolo_predictor import yolo_predictor_utils
 from .residualAttentionBlock import ResidualAttentionBlock
 import torch.nn as nn
@@ -27,6 +23,7 @@ class AstroSAM:
         self.model = model
         self.device = device
         self.predictor = predictor
+        self.transform = ResizeLongestSide(self.model.image_encoder.img_size)
         
         # for image embedding [1, 256, 64, 64]
         residual_block = ResidualAttentionBlock(d_model=256, n_head=8, mlp_ratio=4.0).to(self.device)
@@ -441,7 +438,7 @@ class AstroSAM:
                 
                 # IMAGE ENCODER
                 image_embedding = self.model.image_encoder(input_image) # [1, 256, 64, 64]
-                # image_embedding = (image_embedding+self.add_residual(input_image))/2.0
+                image_embedding = (image_embedding+self.add_residual(input_image))/2.0
                 
                 # negative_mask has the size of the image
                 negative_mask = np.where(image>0, True, False)
@@ -545,10 +542,29 @@ class AstroSAM:
                 image_path = images_dir + image_name
                 image = cv2.imread(image_path)
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                wt_mask, wt_image = dataset_utils.isolate_background(image, decomposition='db1', level=2, sigma=1) # wavelet decomposition for faint sources
+                
+                try:
+                    wt_mask, wt_image = dataset_utils.isolate_background(image, decomposition='db1', level=2, sigma=1) # wavelet decomposition for faint sources
+                except Exception as e:
+                    print(f"Error in wavelet decomposition: {e}")
+                    wt_mask, wt_image = None, None
 
                 obj_results = yolov8_pretrained_model.predict(image_path, verbose=False, conf=0.2) 
-                self.predictor.set_image(image)
+                
+                gt_masks = yolo_predictor_utils.get_masks_from_image(images_dir, image_name) 
+                gt_classes = yolo_predictor_utils.get_classes_from_image(images_dir, image_name) 
+
+                if len(obj_results[0]) == 0 or len(gt_masks) == 0:
+                    # print("No object detected in the image❗️")
+                    del obj_results
+                    continue
+                
+                input_image = predictor_utils.transform_image(self.model, self.transform, image, 'dummy_image_id', self.device)['image']
+                input_image = torch.as_tensor(input_image, dtype=torch.float, device=self.device) # (B, C, 1024, 1024)
+
+                original_image_size = image.shape[:-1]
+                input_size = (1024, 1024)
+                
                 # sets a specific mean for each image
                 image_T = np.transpose(image, (2, 1, 0))
                 mean_ = np.mean(image_T[image_T>0])
@@ -559,16 +575,19 @@ class AstroSAM:
                 self.model.register_buffer("pixel_mean", torch.Tensor(pixel_mean).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
                 self.model.register_buffer("pixel_std", torch.Tensor(pixel_std).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
                 
-                gt_masks = yolo_predictor_utils.get_masks_from_image(images_dir, image_name) 
-                gt_classes = yolo_predictor_utils.get_classes_from_image(images_dir, image_name) 
+                # IMAGE ENCODER
+                image_embedding = self.model.image_encoder(input_image) # [1, 256, 64, 64]
 
-                if len(obj_results[0]) == 0 or len(gt_masks) == 0:
-                    # print("No object detected in the image❗️")
-                    del obj_results, pixel_mean, pixel_std, image_T
-                    continue
-
-                mask_areas = [np.sum(gt_mask) for gt_mask in gt_masks]
+                if torch.isnan(image_embedding).any():
+                    print('NAN in image_embedding')
+                    # plot the image
+                    fig, ax = plt.subplots()
+                    ax.imshow(image)
+                    plt.show()
+                    plt.close()
                 
+                image_embedding = (image_embedding+self.add_residual(input_image))/2.0
+                mask_areas = [np.sum(gt_mask) for gt_mask in gt_masks]
                 input_boxes1 = obj_results[0].boxes.xyxy
                 expand_by = 0.0
                 enlarged_bbox = input_boxes1.clone() 
@@ -576,7 +595,7 @@ class AstroSAM:
                 enlarged_bbox[:, 2:] += expand_by  
                 input_boxes1 = enlarged_bbox
                 input_boxes = input_boxes1.cpu().numpy()
-                input_boxes = self.predictor.transform.apply_boxes(input_boxes, self.predictor.original_size)
+                input_boxes = self.predictor.transform.apply_boxes(input_boxes, original_image_size)
                 input_boxes = torch.from_numpy(input_boxes).to(self.device)
                 sam_mask, yolo_masks = [], []
                 
@@ -592,14 +611,14 @@ class AstroSAM:
                                 masks=None,)
 
                     low_res_masks, iou_predictions = self.model.mask_decoder(
-                                    image_embeddings=self.predictor.features,
+                                    image_embeddings=image_embedding,
                                     image_pe=self.model.prompt_encoder.get_dense_pe(),
                                     sparse_prompt_embeddings=sparse_embeddings,
                                     dense_prompt_embeddings=dense_embeddings,
                                     multimask_output=True,
                                 )
                         
-                    self.predictor.reset_image() 
+                    # self.predictor.reset_image() 
                     
                     max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256)).to(self.device)
                     max_ious = torch.zeros((iou_predictions.shape[0], 1))
@@ -647,7 +666,6 @@ class AstroSAM:
                         obj_results[0].boxes.cls.detach().cpu().numpy(), 
                         gt_classes, 
                         iou_predictions,
-                        image=image,
                         wt_classes=[2.0],
                         wt_mask=wt_mask,
                         mask_areas=mask_areas)
