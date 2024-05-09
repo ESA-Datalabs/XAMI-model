@@ -1,4 +1,3 @@
-import traceback
 import numpy as np
 import cv2
 from PIL import Image
@@ -8,6 +7,9 @@ import torch
 from torchvision.transforms.functional import resize
 from typing import List, Dict, Any, Optional, Tuple
 import torch.nn as nn
+from dataset import dataset_utils
+import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 def transform_image(model, transform, image, k, device):
     
@@ -47,7 +49,6 @@ def transform_image(model, transform, image, k, device):
     
         return transformed_data
     
-    
 def check_requires_grad(model, show=True):
     for name, param in model.named_parameters():
         if param.requires_grad and show:
@@ -55,17 +56,49 @@ def check_requires_grad(model, show=True):
         elif param.requires_grad == False:
             print("❌ Param", name, " doesn't require grad.")
 
-def dice_loss_numpy(pred, target, area=None, smooth = 1): 
-    pred_flat = pred.flatten()
-    target_flat = target.flatten()
+def prints_and_wandb(epoch_sam_loss_train, epoch_sam_loss_val, all_metrics, wandb=None):
     
-    intersection = np.sum(pred_flat * target_flat)
-    union = np.sum(pred_flat) + np.sum(target_flat)
+    color_start = "\033[1;35m"
+    color_end = "\033[0m"
+    print(f"\n{color_start}Epoch metrics:{color_end}")
     
-    dice = (2. * intersection + smooth) / (union + smooth)
-    dice_loss = 1 - dice
+    train_mAP50 = all_metrics[tuple([0.5])]['train']['map']
+    train_mAP75 = all_metrics[tuple([0.75])]['train']['map']
+    train_mAP50_90 = all_metrics[tuple([0.5, 0.75, 0.9])]['train']['map']
+    valid_mAP50 = all_metrics[tuple([0.5])]['valid']['map']
+    valid_mAP75 = all_metrics[tuple([0.75])]['valid']['map']
+    valid_mAP50_90 = all_metrics[tuple([0.5, 0.75, 0.9])]['valid']['map']
     
-    return dice_loss
+    print(f"Train loss: {np.round(epoch_sam_loss_train, 4)}")
+    print(f"Validation loss: {np.round(epoch_sam_loss_val, 4)}")
+    print('Train mAP50:', train_mAP50, 'Train mAP75:', train_mAP75, 'Train mAP50-90:', train_mAP50_90)
+    print('Valid mAP50:', valid_mAP50, 'Valid mAP75:', valid_mAP75, 'Valid mAP50-90:', valid_mAP50_90)
+
+    # Wandb
+    if wandb is not None:
+        wandb.log({'train/mAP50': train_mAP50, 'train/mAP75':train_mAP75, 'train/mAP50-90': train_mAP50_90})
+        wandb.log({'valid/mAP50': valid_mAP50, 'valid/mAP75': valid_mAP75, 'valid/mAP50-90': valid_mAP50_90})
+        wandb.log({'train_SAM_loss': np.round(epoch_sam_loss_train, 4), 'valid_SAM_loss': np.round(epoch_sam_loss_val, 4)})
+        
+def print_training_intro(train_dir_list, valid_dir_list, device, metric_thresholds, num_epochs, batch_size, lr, wd, wandb_track, model, optimizer_name):
+
+    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    color_start = "\033[1;36m"  
+    color_end = "\033[0m" 
+
+    print(f"{color_start}Model Training Configuration:{color_end}")
+    print(f" - Training images: {len(train_dir_list)}")
+    print(f" - Validation images: {len(valid_dir_list)}")
+    print(f" - Number of Epochs: {num_epochs}")
+    print(f" - Batch Size: {batch_size}")
+    print(f" - Learning Rate: {lr}")
+    print(f" - Weight Decay: {wd}")
+    print(f" - Device: {device}")
+    print(f" - mAP thresholds: {metric_thresholds}")
+    print(f" - Early Stopping: Stop if no improvement after {num_epochs // 10 + 5} epochs.")
+    print(f" - Weights & Biases Tracking: {'Enabled' if wandb_track else 'Disabled'}.")
+    print(f" - Optimizer: {optimizer_name}.")
+    print(f" - Total Trainable Parameters: {total_params:,}")
 
 def create_gaussian_kernel(kernel_size=5, sigma=2, in_channels=1, out_channels=1):
         """Generate a 2D Gaussian kernel."""
@@ -93,7 +126,7 @@ def create_gaussian_kernel(kernel_size=5, sigma=2, in_channels=1, out_channels=1
         
         return gaussian_kernel
 
-def dice_loss_numpyy(pred_mask, gt_mask):
+def dice_loss_numpy(pred_mask, gt_mask):
     smooth = 1.0 
     intersection = torch.sum(pred_mask * gt_mask)
     return 1 - ((2. * intersection + smooth) / (torch.sum(pred_mask) + torch.sum(gt_mask) + smooth))
@@ -137,12 +170,71 @@ def remove_masks(
         # remove very big masks
         if remove_big_masks and img_shape is not None and np.sum(sam_result[segm_index]['segmentation']) > big_masks_threshold:
             bad_indices = np.append(bad_indices, segm_index)   
-    sam_result = np.delete(sam_result, bad_indices)
+    sam_result = np.delete(sam_result, bad_indices) # type: ignore
     return sam_result
 
-import numpy as np
-from scipy.optimize import linear_sum_assignment
-import torch
+def show_predicted_masks(masks, ax, random_color=False, colours=None):
+    for i in range(len(masks)):
+        if random_color:
+            color = np.concatenate([np.random.random(3), np.array([0.6])], axis=0)
+        elif colours is not None:
+            color = np.array([c/255.0 for c in colours[i]]+[0.6])
+        else:
+            color = np.array([30/255, 144/255, 255/255, 0.6])
+        h, w = masks[i].shape[-2:]
+        mask_image = masks[i].reshape(h, w, 1) * color.reshape(1, 1, -1)
+        ax.imshow(mask_image)
+        
+def compute_iou(mask1, mask2):
+    """Compute Intersection over Union of two binary masks."""
+    intersection = np.logical_and(mask1, mask2)
+    union = np.logical_or(mask1, mask2)
+    iou_score = np.sum(intersection) / np.sum(union)
+    return iou_score
+
+def compute_metrics(gt_masks, pred_masks, iou_threshold, image=None):
+    """Compute the True Positive, False Positive, and False Negative BINARY masks for multiple segmentations."""
+    
+    # if image is not None:
+    #     plt.imshow(image)
+    #     for mask in gt_masks:
+    #         dataset_utils.show_mask(mask[0], plt.gca())
+    #     plt.show()
+    #     plt.close()
+    
+    #     plt.imshow(image)
+    #     for mask in pred_masks:
+    #         dataset_utils.show_mask(mask, plt.gca())
+    #     plt.show()
+    #     plt.close()
+        
+    combined_gt_mask = np.zeros_like(gt_masks[0][0], dtype=bool)
+    combined_pred_mask = np.zeros_like(pred_masks[0], dtype=bool)
+    filtered_pred_masks = np.zeros_like(pred_masks, dtype=bool)
+    
+    # print(gt_masks.shape, pred_masks.shape) # (N, 1, H, W), (N, H, W)
+    for i, pred_mask in enumerate(pred_masks):
+        max_iou = 0  # Max IoU for this pred_mask with any gt_mask
+        for gt_mask in gt_masks:
+            intersection = np.logical_and(gt_mask[0], pred_mask)
+            union = np.logical_or(gt_mask[0], pred_mask)
+            iou_score = np.sum(intersection) / np.sum(union) if np.sum(union) > 0 else 0
+            max_iou = max(max_iou, iou_score)  
+
+        if max_iou > iou_threshold: # take IoUs above threshold
+            filtered_pred_masks[i] = pred_mask
+
+    for gt_mask in gt_masks:
+        combined_gt_mask = np.logical_or(combined_gt_mask, gt_mask)
+
+    for pred_mask in filtered_pred_masks:
+        combined_pred_mask = np.logical_or(combined_pred_mask, pred_mask.astype(bool))
+
+    true_positive_mask = np.logical_and(combined_gt_mask, combined_pred_mask)
+    false_negative_mask = np.logical_and(combined_gt_mask, np.logical_not(combined_pred_mask))
+    false_positive_mask = np.logical_and(combined_pred_mask, np.logical_not(combined_gt_mask))
+
+    return true_positive_mask, false_positive_mask, false_negative_mask
 
 def instance_segmentation_loss(pred_masks, gt_masks):
 
@@ -167,7 +259,7 @@ def instance_segmentation_loss(pred_masks, gt_masks):
         # ax[1].imshow(pred_masks[pred_idx].float())
         # plt.show()
         # plt.close()
-        loss += dice_loss_numpyy(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
+        loss += dice_loss_numpy(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
         # print('dice loss: ', loss)
 
     # Normalize the loss
@@ -180,12 +272,12 @@ def instance_segmentation_loss(pred_masks, gt_masks):
     # Penalize unmatched predicted masks (False Positives)
     unmatched_pred = set(range(len(pred_masks))) - set(row_ind)
      # Penalize unmatched predicted masks (False Positives)
-    fp_loss = sum(dice_loss_numpyy(pred_masks[i], torch.zeros_like(pred_masks[i])) for i in unmatched_pred)
+    fp_loss = sum(dice_loss_numpy(pred_masks[i], torch.zeros_like(pred_masks[i])) for i in unmatched_pred)
 
     # Penalize unmatched ground truth masks (False Negatives)
     unmatched_gt = set(range(len(gt_masks))) - set(col_ind)
     # Penalize unmatched ground truth masks (False Negatives)
-    fn_loss = sum(dice_loss_numpyy(torch.zeros_like(gt_masks[j]), gt_masks[j]) for j in unmatched_gt)
+    fn_loss = sum(dice_loss_numpy(torch.zeros_like(gt_masks[j]), gt_masks[j]) for j in unmatched_gt)
 
     # Total loss
     total_loss = loss + fp_loss + fn_loss
@@ -284,7 +376,7 @@ def amg_predict(any_sam_model, AMG, data_set_gt_masks, model_name,  IMAGE_PATH, 
             # Ground truth mask
             axs[0].imshow(image_bgr, cmap='viridis')
             for mask_ in gt_image_masks:
-                show_mask(mask_, axs[0])
+                dataset_utils.show_mask(mask_, axs[0])
             axs[0].set_title('Ground Truth Masks\n'+image_name.split(".")[0])
             
             # Predicted mask
@@ -334,7 +426,6 @@ def SAM_predictor(AMG, sam, IMAGE_PATH, mask_on_negative = None, img_grid_points
 
     except Exception as e:
         print("Exception:\n", e)
-        traceback.print_exc()
         return None, None, None
             
     return sam_result, detections, annotated_image

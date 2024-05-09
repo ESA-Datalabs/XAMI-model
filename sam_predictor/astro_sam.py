@@ -18,12 +18,12 @@ from yolo_predictor import yolo_predictor_utils
 import torch.nn as nn
 
 class AstroSAM:
-    def __init__(self, model, device, predictor, residual_block):
+    def __init__(self, model, device, predictor, residualAttentionBlock):
         self.model = model
         self.device = device
         self.predictor = predictor
         self.transform = ResizeLongestSide(self.model.image_encoder.img_size)
-        self.residual_block = residual_block    
+        self.residualAttentionBlock = residualAttentionBlock    
             
     def one_image_predict(
         self,
@@ -307,7 +307,7 @@ class AstroSAM:
             if len(boxes)>0:
                 boxes = torch.stack(boxes, dim=0)
             else:
-                print("After augm, image has no bbox annotations❗️")
+                # print("After augm, image has no bbox annotations❗️")
                 boxes = None
                 return torch.tensor(0.0)
                 
@@ -424,7 +424,7 @@ class AstroSAM:
         losses = []
 
         for inputs in tqdm(dataloader, desc=f'{mode[0].upper()+mode[1:]} Progress', bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
-            batch_loss = 0.0
+            batch_loss = torch.tensor(0.0, device=self.device, requires_grad=True)
             batch_size = len(inputs['image']) # sometimes, at the last iteration, there are fewer images than batch size
             for i in range(batch_size):
                 image_masks = [k for k in gt_masks.keys() if k.startswith(inputs['image_id'][i])]
@@ -462,29 +462,33 @@ class AstroSAM:
                     # else:
                     #     print(f"{inputs['image_id'][i]} has no annotations❗️")
                     
+            if batch_loss == 0.0:
+                print(f"Batch loss is 0.0 for {inputs['image_id'][i]}")
+                continue
+            
             if mode == 'train':
                 optimizer.zero_grad()
                 batch_loss.backward()
                 optimizer.step()
                 
-                if scheduler is not None:  # this back_step should be removed
+                if scheduler is not None:
                     scheduler.step()
                     # print("Current LR:", optimizer.param_groups[0]['lr'])
                     
                 del image_embedding, negative_mask, input_image, image
                 torch.cuda.empty_cache()
-
-                losses.append(batch_loss.item()/batch_size) #/loss_scaling_factor)
+                losses.append(batch_loss.item()/batch_size)
             else:
-                # check if batch loss is float 
-                self.residual_block.eval()
-                if isinstance(batch_loss, float):
-                    losses.append(batch_loss/batch_size)
-                else:
-                    losses.append(batch_loss.detach().cpu().numpy()/batch_size)
+                # loss = batch_loss.detach().cpu().numpy()
+                
+                # # check if batch loss is float 
+                # if isinstance(batch_loss, float):
+                #     losses.append(batch_loss/batch_size)
+                # else:
+                losses.append(batch_loss.item()/batch_size)
                 del batch_loss, image_embedding, negative_mask, input_image, image
 			
-        return np.mean(losses), self.model, self.residual_block
+        return np.mean(losses), self.model, self.residualAttentionBlock
         
     def add_residual(self, image): # [1, 3, 1024, 1024]
         
@@ -504,7 +508,7 @@ class AstroSAM:
 
         # Reshape the tensor to [sequence_length, batch_size, d_model]
         reshaped_tensor = image_embedding.permute(2, 3, 0, 1).reshape(sequence_length, batch_size, d_model)
-        output_tensor = self.residual_block(reshaped_tensor)
+        output_tensor = self.residualAttentionBlock(reshaped_tensor)
         residual_image_embedding = output_tensor.view(image_embedding.shape[-2], image_embedding.shape[-1], batch_size, d_model).permute(2, 3, 0, 1)
         
         return residual_image_embedding
@@ -542,7 +546,8 @@ class AstroSAM:
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 
                 try:
-                    wt_mask, wt_image = dataset_utils.isolate_background(image, decomposition='db1', level=2, sigma=1) # wavelet decomposition for faint sources
+                    # wavelet decomposition for faint sources on the grayscale data
+                    wt_mask, wt_image = dataset_utils.isolate_background(image[:, :, 0], decomposition='db1', level=2, sigma=1) # (H, W)
                 except Exception as e:
                     print(f"Error in wavelet decomposition: {e}")
                     wt_mask, wt_image = None, None

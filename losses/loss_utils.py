@@ -137,9 +137,6 @@ def segm_loss_match_hungarian_compared(
     total_dice_loss = 0
     total_focal_loss = 0
     
-    if wt_mask is not None:
-        wt_mask = wt_mask[:, :, 0]
-    
     for pred_idx, gt_idx in zip(row_ind, col_ind):
         
         dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])

@@ -17,7 +17,7 @@ with open(data_yaml_path, 'r') as stream:
 project = f"yolov8-segm-{iter}" 
 name = model_checkpoint.replace('.pt', '') 
 
-# Train the model
+# Train YOLOv8 model
 results = model.train(data=data_yaml_path,
                       project=project,
                       name=name,
@@ -40,7 +40,7 @@ results = model.train(data=data_yaml_path,
                       # freeze layers
                      )
 
-# # 2 - train RT-DETR
+# # Train RT-DETR
 # # Load a COCO-pretrained RT-DETR-l model
 # model_checkpoint = 'rtdetr-l.pt'
 # model = RTDETR(model_checkpoint)

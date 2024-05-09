@@ -25,10 +25,9 @@ def mAP_metrics(map_metric,
                 gt_classes, 
                 pred_classes, 
                 all_iou_scores,
-                mask_areas):
+                mask_areas,
+			    show_metrics=False):
     
-    all_ious_flatten = flatten_ious_areas(pred_classes, all_iou_scores)
-
     all_preds, all_gts, all_ious = [], [], []
     for i in range(len(preds)):
         gt_i = np.array([gts[i][j][0] for j in range(len(gts[i]))])
@@ -41,8 +40,6 @@ def mAP_metrics(map_metric,
     all_gt_classes = [np.array(gt_classes[i], dtype=np.int8) for i in range(len(gt_classes))]
     all_pred_classes = [np.array(pred_classes[i], dtype=np.int8) for i in range(len(pred_classes))]
     
-    print(len(all_preds), len(all_gts), len(all_ious), len(all_gt_classes), len(all_pred_classes))
-
     preds_per_image = []
     gts_per_image = []
     
@@ -60,8 +57,55 @@ def mAP_metrics(map_metric,
         preds_per_image.append(img_preds_dict)
         gts_per_image.append(img_gts_dict)
 
-    print(preds_per_image[1]['masks'].shape, preds_per_image[1]['scores'].shape, preds_per_image[1]['labels'].shape)
-    
     map_metric.update(preds_per_image, gts_per_image)
-    pprint(map_metric.compute())
+    if show_metrics:
+        pprint(map_metric.compute())
+		
     return map_metric.compute()
+
+def compute_metrics(gt_masks, pred_masks, iou_threshold, image=None):
+    """Compute the True Positive, False Positive, and False Negative BINARY masks for multiple segmentations."""
+    
+    # if image is not None:
+        # plt.imshow(image)
+        # for mask in gt_masks:
+        #     dataset_utils.show_mask(mask[0], plt.gca())
+        # plt.show()
+        # plt.close()
+    
+        # plt.imshow(image)
+        # for mask in pred_masks:
+        #     dataset_utils.show_mask(mask, plt.gca())
+        # plt.show()
+        # plt.close()
+        
+    combined_gt_mask = np.zeros_like(gt_masks[0][0], dtype=bool)
+    combined_pred_mask = np.zeros_like(pred_masks[0], dtype=bool)
+    filtered_pred_masks = np.zeros_like(pred_masks, dtype=bool)
+    combined_filtered_pred_masks = np.zeros_like(pred_masks[0], dtype=bool)
+    
+    # print(gt_masks.shape, pred_masks.shape) # (N, 1, H, W), (N, H, W)
+    for i, pred_mask in enumerate(pred_masks):
+        max_iou = 0  
+        
+        for gt_mask in gt_masks:
+            intersection = np.logical_and(gt_mask[0], pred_mask)
+            union = np.logical_or(gt_mask[0], pred_mask)
+            iou_score = np.sum(intersection)/np.sum(union) if np.sum(union) > 0 else 0
+            max_iou = max(max_iou, iou_score)  
+
+        if max_iou > iou_threshold: # take IoUs above threshold
+            filtered_pred_masks[i] = pred_mask
+
+    for gt_mask in gt_masks:
+        combined_gt_mask = np.logical_or(combined_gt_mask, gt_mask.astype(bool))
+    for pred_mask in filtered_pred_masks:
+        combined_filtered_pred_masks = np.logical_or(combined_filtered_pred_masks, pred_mask.astype(bool))
+    for pred_mask in pred_masks:
+        combined_pred_mask = np.logical_or(combined_pred_mask, pred_mask.astype(bool))
+
+    true_positive_mask = np.logical_and(combined_gt_mask, combined_filtered_pred_masks)
+    false_negative_mask = np.logical_and(combined_gt_mask, np.logical_not(combined_filtered_pred_masks))
+    false_positive_mask = np.logical_and(combined_pred_mask, np.logical_not(combined_gt_mask))
+
+    return true_positive_mask, false_positive_mask, false_negative_mask
