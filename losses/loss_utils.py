@@ -120,7 +120,6 @@ def segm_loss_match_hungarian_compared(
 	all_pred_classes, 
 	all_gt_classes, 
 	iou_scores,
-    image = None,
     wt_classes = None,
     wt_mask = None,
     mask_areas=None):
