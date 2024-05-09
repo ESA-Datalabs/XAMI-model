@@ -15,22 +15,14 @@ from sam_predictor import predictor_utils
 from . import preprocess
 from torch.nn.functional import threshold, normalize
 from yolo_predictor import yolo_predictor_utils
-from .residualAttentionBlock import ResidualAttentionBlock
 import torch.nn as nn
 
 class AstroSAM:
-    def __init__(self, model, device, predictor):
+    def __init__(self, model, device, predictor, residual_block):
         self.model = model
         self.device = device
         self.predictor = predictor
         self.transform = ResizeLongestSide(self.model.image_encoder.img_size)
-        
-        # for image embedding [1, 256, 64, 64]
-        residual_block = ResidualAttentionBlock(d_model=256, n_head=8, mlp_ratio=4.0).to(self.device)
-        for param in residual_block.parameters():
-            param.requires_grad = True # this is usually already true
-        
-        residual_block.train()
         self.residual_block = residual_block    
             
     def one_image_predict(
@@ -151,8 +143,14 @@ class AstroSAM:
         if cr_transforms is not None:
             # print('Applying CR transforms on {}'.format(k))
             for cr_transform in cr_transforms:
-                bboxes = np.array([np.array([box[0], box[1], box[2]-box[0], box[3]-box[1]]) for box in gt_numpy_bboxes])
                 
+                for bbox in gt_numpy_bboxes:
+                    x_min, y_min, x_max, y_max = bbox  # Adjust this line based on how your bbox data is structured
+                    if x_max <= x_min or y_max <= y_min:
+                        print("Invalid bbox found:", bbox)
+                        
+                bboxes = np.array([np.array([box[0], box[1], box[2]-box[0], box[3]-box[1]]) for box in gt_numpy_bboxes])
+                        
                 transformed = cr_transform(
                     image=input_image, 
                     bboxes=bboxes.reshape(-1,4), # flatten bboxes
@@ -471,7 +469,7 @@ class AstroSAM:
                 
                 if scheduler is not None:  # this back_step should be removed
                     scheduler.step()
-                    print("Current LR:", optimizer.param_groups[0]['lr'])
+                    # print("Current LR:", optimizer.param_groups[0]['lr'])
                     
                 del image_embedding, negative_mask, input_image, image
                 torch.cuda.empty_cache()
@@ -486,7 +484,7 @@ class AstroSAM:
                     losses.append(batch_loss.detach().cpu().numpy()/batch_size)
                 del batch_loss, image_embedding, negative_mask, input_image, image
 			
-        return np.mean(losses), self.model
+        return np.mean(losses), self.model, self.residual_block
         
     def add_residual(self, image): # [1, 3, 1024, 1024]
         
@@ -586,7 +584,7 @@ class AstroSAM:
                     plt.show()
                     plt.close()
                 
-                image_embedding = (image_embedding+self.add_residual(input_image))/2.0
+                # image_embedding = (image_embedding+self.add_residual(input_image))/2.0
                 mask_areas = [np.sum(gt_mask) for gt_mask in gt_masks]
                 input_boxes1 = obj_results[0].boxes.xyxy
                 expand_by = 0.0
