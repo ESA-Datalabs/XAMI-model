@@ -9,7 +9,7 @@ iter = sys.argv[1]
 
 model_checkpoint = 'yolov8n-seg.pt'
 model = YOLO(model_checkpoint) 
-data_yaml_path = f"../AstroArtefactToolkit_XMMoptical/mskf_YOLO_{iter}/data.yaml"
+data_yaml_path = f"../../AstroArtefactToolkit_XMMoptical/mskf_YOLO_{iter}/data.yaml"
 
 with open(data_yaml_path, 'r') as stream:
     num_classes = str(yaml.safe_load(stream)['nc'])

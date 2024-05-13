@@ -145,10 +145,10 @@ def segm_loss_match_hungarian_compared(
         focal_loss_yolo = compute_focal_loss(yolo_pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
         
         good_mask = pred_masks[pred_idx]
-        if wt_mask is not None and wt_classes is not None:
-            # check if the original image bounded by the ground truth mask has a higher average intensity than the predicted mask
-            wt_on_mask = wt_mask * pred_masks[pred_idx].detach().cpu().numpy() / np.sum(pred_masks[pred_idx].detach().cpu().numpy())
-            wt_count = np.sum(wt_on_mask)
+        # if wt_mask is not None and wt_classes is not None:
+        #     # check if the original image bounded by the ground truth mask has a higher average intensity than the predicted mask
+        #     wt_on_mask = wt_mask * pred_masks[pred_idx].detach().cpu().numpy() / np.sum(pred_masks[pred_idx].detach().cpu().numpy())
+        #     wt_count = np.sum(wt_on_mask)
             # print("wt_count", wt_count)
             # print(str(all_pred_classes[pred_idx]), wt_classes)
             # if wt_count > 0.6 and all_pred_classes[pred_idx] in wt_classes: 
@@ -293,27 +293,17 @@ def focal_loss_per_mask_pair(inputs, targets, mask_areas):
     total_masks_area = np.array(mask_areas).sum()
     focal_loss = 0.0
     
+    if total_masks_area == 0:
+        print("Total mask area is zero")
+        return focal_loss
+    if batch_size == 0:
+        print("batch_size is zero")
+        return focal_loss  
+      
     for i in range(batch_size):
         input_mask = inputs[i].unsqueeze(0)
         target_mask = targets[i].unsqueeze(0)
         focal_loss += (compute_focal_loss(input_mask, target_mask) * mask_areas[i] / total_masks_area) # weighted loss given mask size
-        
-        # fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-    
-        # # Assuming masks are 2D tensors, convert them to numpy for plotting
-        # pred_masks_np = inputs.detach().cpu().numpy() if inputs.is_cuda else inputs.numpy()
-        # target_mask_np = target_mask.detach().cpu().numpy() if target_mask.is_cuda else target_mask.numpy()
-        
-        # ax[0].imshow(pred_masks_np[i])
-        # ax[0].set_title(f'Predicted Mask\n focal_loss: {(mask_focal_loss * mask_areas[i] / total_masks_area):.4f}')
-        # ax[0].axis('off')
-        
-        # ax[1].imshow(target_mask_np[0])
-        # ax[1].set_title('Target Mask')
-        # ax[1].axis('off')
-        
-        # plt.tight_layout()
-        # plt.show()
         
     focal_loss /= batch_size
     

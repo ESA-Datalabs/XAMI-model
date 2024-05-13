@@ -13,42 +13,75 @@ from scipy.optimize import linear_sum_assignment
 
 def transform_image(model, transform, image, k, device):
     
-        # sets a specific mean for each image
-        image_T = np.transpose(image, (2, 1, 0))
-        mean_ = np.mean(image_T[image_T>0])
-        std_ = np.std(image_T[image_T>0]) 
-        pixel_mean = torch.as_tensor([mean_, mean_, mean_], dtype=torch.float, device=device)
-        pixel_std = torch.as_tensor([std_, std_, std_], dtype=torch.float, device=device)
-        # print(pixel_mean, pixel_std)
-        # plt.imshow(image)
-        # plt.show()
-        # plt.close()
-        model.register_buffer("pixel_mean", torch.Tensor(pixel_mean).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
-        model.register_buffer("pixel_std", torch.Tensor(pixel_std).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
+    image_tensor = torch.from_numpy(image).to(device).float()  
+    mask_nonzero = image_tensor > 0
+    image_nonzero = image_tensor[mask_nonzero]
+    mean_ = image_nonzero.mean()
+    std_ = image_nonzero.std()
+    model.register_buffer("pixel_mean", mean_.repeat((3, 1, 1)), persistent=False)
+    model.register_buffer("pixel_std", std_.repeat((3, 1, 1)), persistent=False)
+    negative_mask = (image_tensor > 0).to(torch.float32)
+    negative_mask = negative_mask.permute(2, 0, 1)
+    negative_mask = resize(negative_mask, [1024, 1024], antialias=True).unsqueeze(0)
 
-        transformed_data = {}
-        negative_mask = np.where(image > 0, True, False)
-        negative_mask = torch.from_numpy(negative_mask)  
-        negative_mask = negative_mask.permute(2, 0, 1)
-        negative_mask = resize(negative_mask, [1024, 1024], antialias=True) 
-        negative_mask = negative_mask.unsqueeze(0)
-        # scales the image to 1024x1024 by longest side 
-        input_image = transform.apply_image(image)
-        input_image_torch = torch.as_tensor(input_image, device=device)
-        transformed_image = input_image_torch.permute(2, 0, 1).contiguous()[None, :, :, :]
+    input_image = transform.apply_image(image)
+    input_image_torch = torch.as_tensor(input_image, device=device).permute(2, 0, 1).unsqueeze(0)
+    
+    input_image = model.preprocess(input_image_torch)
+    original_image_size = torch.tensor(image.shape[:2], device=device)
+    input_size = input_image_torch.shape[-2:]
+    input_image[~negative_mask.bool()] = 0
+
+    transformed_data = {
+        'image': input_image,
+        'input_size': input_size,
+        'image_id': k,
+        'original_image_size': original_image_size
+    }
+    
+    return transformed_data
+
+        # # sets a specific mean for each image
+        # image_T = np.transpose(image, (2, 1, 0))
+        # mean_ = np.mean(image_T[image_T>0])
+        # std_ = np.std(image_T[image_T>0]) 
+        # pixel_mean = torch.as_tensor([mean_, mean_, mean_], dtype=torch.float, device=device)
+        # pixel_std = torch.as_tensor([std_, std_, std_], dtype=torch.float, device=device)
+
+        # model.register_buffer("pixel_mean", torch.Tensor(pixel_mean).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
+        # model.register_buffer("pixel_std", torch.Tensor(pixel_std).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
+
+        # transformed_data = {}
+        # negative_mask = np.where(image > 0, True, False)
+        # negative_mask = torch.from_numpy(negative_mask)  
+        # negative_mask = negative_mask.permute(2, 0, 1)
+        # negative_mask = resize(negative_mask, [1024, 1024], antialias=True) 
+        # negative_mask = negative_mask.unsqueeze(0)
         
-        # normalization and padding
-        input_image = model.preprocess(transformed_image)
-        original_image_size = image.shape[:2]
-        input_size = tuple(transformed_image.shape[-2:])
-        input_image[~negative_mask] = 0
-        transformed_data['image'] = input_image
-        transformed_data['input_size'] = input_size 
-        transformed_data['image_id'] = k
-        transformed_data['original_image_size'] = original_image_size
+        # # scales the image to 1024x1024 by longest side 
+        # input_image = transform.apply_image(image)
+        # input_image_torch = torch.as_tensor(input_image, device=device)
+        # transformed_image = input_image_torch.permute(2, 0, 1).contiguous()[None, :, :, :]
+        
+        # # normalization and padding
+        # input_image = model.preprocess(transformed_image)
+        # original_image_size = image.shape[:2]
+        # input_size = tuple(transformed_image.shape[-2:])
+        # input_image[~negative_mask] = 0
+        # transformed_data['image'] = input_image
+        # transformed_data['input_size'] = input_size 
+        # transformed_data['image_id'] = k
+        # transformed_data['original_image_size'] = original_image_size
     
-        return transformed_data
+        # return transformed_data
+
+def set_mean_and_transform(image, model, transform, device):
     
+    input_image = transform_image(model, transform, image, 'dummy_image_id', device)['image']
+    input_image = torch.as_tensor(input_image, dtype=torch.float, device=device) # (B, C, 1024, 1024)
+    
+    return input_image
+
 def check_requires_grad(model, show=True):
     for name, param in model.named_parameters():
         if param.requires_grad and show:
@@ -56,12 +89,7 @@ def check_requires_grad(model, show=True):
         elif param.requires_grad == False:
             print("❌ Param", name, " doesn't require grad.")
 
-def prints_and_wandb(epoch_sam_loss_train, epoch_sam_loss_val, all_metrics, wandb=None):
-    
-    color_start = "\033[1;35m"
-    color_end = "\033[0m"
-    print(f"\n{color_start}Epoch metrics:{color_end}")
-    
+def prints_and_wandb(epoch_sam_loss_train, epoch_sam_loss_val, all_metrics, wandb=None):    
     train_mAP50 = all_metrics[tuple([0.5])]['train']['map']
     train_mAP75 = all_metrics[tuple([0.75])]['train']['map']
     train_mAP50_90 = all_metrics[tuple([0.5, 0.75, 0.9])]['train']['map']
@@ -386,7 +414,6 @@ def amg_predict(any_sam_model, AMG, data_set_gt_masks, model_name,  IMAGE_PATH, 
             plt.show()
             plt.close()
     return annotated_image, iou_assoc_loss
-
 
 def SAM_predictor(AMG, sam, IMAGE_PATH, mask_on_negative = None, img_grid_points=None):
     """

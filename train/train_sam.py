@@ -12,12 +12,16 @@ import json
 import sys
 import cv2
 from pycocotools import mask as maskUtils
-np.set_printoptions(precision=15)
+np.set_printoptions(precision=9)
 import albumentations as A
 import matplotlib.pyplot as plt
 
+# Append project path when running in CLI
+relative_project_path = os.path.join(os.path.dirname(__file__), '../')
+sys.path.append(relative_project_path)
+print('Project path:', relative_project_path)
 from dataset import dataset_utils
-from sam_predictor import load_dataset, astro_sam, predictor_utils, residualAttentionBlock
+from sam_predictor import load_dataset, astro_sam, predictor_utils #, residualAttentionBlock
 
 kfold_iter = int(sys.argv[1])
 device_id = int(sys.argv[2])
@@ -26,8 +30,8 @@ lr=3e-4
 wd=0.0005
 wandb_track=True
 batch_size=8
-num_epochs=100
-use_lr_warmup_and_decay = True
+num_epochs=50
+use_lr_warmup_and_decay=True
 work_dir = './output_sam'
 torch.cuda.set_device(device_id)
 device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
@@ -40,7 +44,7 @@ else:
     
 # Dataset split
 
-input_dir = f'../AstroArtefactToolkit_XMMoptical/mskf_{kfold_iter}/'
+input_dir = f'../../AstroArtefactToolkit_XMMoptical/mskf_{kfold_iter}/'
 train_dir = input_dir+f'train/'
 valid_dir = input_dir+f'valid/'
 json_train_path, json_valid_path = train_dir+'_annotations.coco.json', valid_dir+'_annotations.coco.json'
@@ -95,7 +99,7 @@ train_data_in['categories']
 
 import sys
 sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/')
-from ft_mobile_sam import sam_model_registry, SamPredictor, build_efficientvit_l2_encoder
+from ft_mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
 
 # Segment Anything Model
 mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/weights/mobile_sam.pt"
@@ -103,13 +107,13 @@ model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
 model.to(device);
 predictor = SamPredictor(model)
 
-# Residual Attention Block
-residual_block = residualAttentionBlock.ResidualAttentionBlock(d_model=256, n_head=8, mlp_ratio=4.0).to(device)
-for name, param in residual_block.named_parameters():
-	param.requires_grad = True # this is usually already true
+# # Residual Attention Block
+# residualAttentionBlock = residualAttentionBlock.ResidualAttentionBlock(d_model=256, n_head=8, mlp_ratio=4.0).to(device)
+# for name, param in residualAttentionBlock.named_parameters():
+# 	param.requires_grad = True # this is usually already true
 
 ## setup the AstroSAM model
-astrosam_model = astro_sam.AstroSAM(model, device, predictor, residual_block)
+astrosam_model = astro_sam.AstroSAM(model, device, predictor) #, residualAttentionBlock)
 
 if wandb_track:
     # !pip install wandb
@@ -147,7 +151,7 @@ scheduler=None
 if use_lr_warmup_and_decay:
     initial_lr = lr
     final_lr = 6e-5
-    total_steps = 10  # total steps over which the learning rate should decrease
+    total_steps = batch_size  # total steps over which the learning rate should decrease
     lr_decrement = (initial_lr - final_lr) / total_steps
 
     def lr_lambda(current_step):
@@ -159,21 +163,20 @@ if use_lr_warmup_and_decay:
 
 # Model weights
 print(f"🚀 The SAM model has {sum(p.numel() for p in astrosam_model.model.parameters() if p.requires_grad)} trainable parameters.\n")
-print(f"🚀 The ResAttnBlock has {sum(p.numel() for p in astrosam_model.residual_block.parameters() if p.requires_grad)} trainable parameters.\n")
-
-predictor_utils.check_requires_grad(astrosam_model.model)
+# print(f"🚀 The ResAttnBlock has {sum(p.numel() for p in astrosam_model.residualAttentionBlock.parameters() if p.requires_grad)} trainable parameters.\n")
+# predictor_utils.check_requires_grad(astrosam_model.model)
 
 # Run Training
-
 train_losses = []
 valid_losses = []
 best_valid_loss = float('inf')
 n_epochs_stop = 5+num_epochs/10
 
+# Augmentations
 geometrical_augmentations = A.Compose([
         A.Flip(p=0.8),
         A.RandomRotate90(p=0.7),
-        A.RandomSizedCrop((512 - 50, 512 - 50), 512, 512, always_apply=True, p=1),
+        A.RandomSizedCrop((512 - 20, 512 - 20), 512, 512, p=0.8),
     ], bbox_params={'format':'coco', 'label_fields': ['category_id']}, p=1)
     
 noise_blur_augmentations = A.Compose([
@@ -188,26 +191,26 @@ for epoch in range(num_epochs):
 
     # Train
     astrosam_model.model.train()
-    astrosam_model.residual_block.train()
+    # astrosam_model.residualAttentionBlock.train()
 	
-    epoch_loss, model, residual_block = astrosam_model.train_validate_step(
+    epoch_loss = astrosam_model.train_validate_step(
         train_dataloader, 
         train_dir, 
         train_gt_masks, 
         train_bboxes, 
         optimizer, 
         mode='train',
-        cr_transforms=None, #cr_transforms,
+        cr_transforms=cr_transforms,
         scheduler=scheduler)
     
     train_losses.append(epoch_loss)
     
     # Validate
     astrosam_model.model.eval()
-    astrosam_model.residual_block.eval()
+    # astrosam_model.residualAttentionBlock.eval()
 	
     with torch.no_grad():
-        epoch_val_loss, model, residual_block =  astrosam_model.train_validate_step(
+        epoch_val_loss =  astrosam_model.train_validate_step(
             val_dataloader, 
             valid_dir, 
             val_gt_masks, 
@@ -229,8 +232,8 @@ for epoch in range(num_epochs):
         if epoch_val_loss < best_valid_loss:
             best_valid_loss = epoch_val_loss
             best_epoch = epoch
-            best_model = model
-            best_residual_attn = residual_block
+            best_model = astrosam_model.model
+            # best_residual_attn = residualAttentionBlock
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -239,9 +242,9 @@ for epoch in range(num_epochs):
                 early_stop = True
                 break
 				
-torch.save(best_model.state_dict(), f'{work_dir}/sam_checkpoint{datetime.now()}.pth')
-torch.save(astrosam_model.model.state_dict(), f'{work_dir}/sam_checkpoint{datetime.now()}_last.pth')
-torch.save(astrosam_model.residual_block.state_dict(), f'{work_dir}/residual_attn_blk__checkpoint{datetime.now()}_last.pth')
+torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_best.pth')
+torch.save(astrosam_model.model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_last.pth')
+# torch.save(astrosam_model.residualAttentionBlock.state_dict(), f'{work_dir}/residual_attn_blk_{kfold_iter}_{datetime.now()}_best.pth')
 
 if wandb_track:
     wandb.run.summary["batch_size"] = batch_size

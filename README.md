@@ -44,5 +44,5 @@ yolo_sam_pipe.run_predict('path/to/image')
 
 ## Licence 
 
-license: cc-by-4.0
+This project is licensed under [MIT license](LICENSE).
 
