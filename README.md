@@ -26,17 +26,17 @@ After setting up your environment, use the following Python code for model loadi
 import sys
 from YoloSamPipeline import YoloSam
 
-yolo_path = 'path/to/yolo/checkpoint' 
-mobile_sam_path = 'path/to/mobile_sam/checkpoint' 
+yolo_checkpoint = 'path/to/yolo/checkpoint' 
+mobile_sam_checkpoint = 'path/to/mobile_sam/checkpoint' 
 
 # load the models
 yolo_sam_pipeline = YoloSam(
     device='cuda:0', 
-    yolo_checkpoint=yolo_path, 
-    sam_checkpoint='./output_sam/ft_mobile_sam_final_2024-04-27 00:02:11.627528_last.pth', # the checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
+    yolo_checkpoint=yolo_checkpoint, 
+    sam_checkpoint=mobile_sam_checkpoint, # the checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
     model_type='vit_t',
     efficient_vit_enc=None,
-    yolo_conf=0.3)
+    yolo_conf=0.2)
 # predict
 yolo_sam_pipe.run_predict('path/to/image')
 ```

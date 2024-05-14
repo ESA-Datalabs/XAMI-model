@@ -99,7 +99,7 @@ train_data_in['categories']
 
 import sys
 sys.path.append('/workspace/raid/OM_DeepLearning/XAMI/mobile_sam')
-from ft_mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
+from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
 
 # Segment Anything Model
 mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/mobile_sam/weights/mobile_sam.pt"

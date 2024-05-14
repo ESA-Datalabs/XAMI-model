@@ -13,7 +13,7 @@ from ultralytics import YOLO, RTDETR
 from segment_anything.utils.transforms import ResizeLongestSide
 import tqdm
 sys.path.append('/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/')
-from ft_mobile_sam import sam_model_registry, SamPredictor #, build_efficientvit_l2_encoder
+from mobile_sam import sam_model_registry, SamPredictor #, build_efficientvit_l2_encoder
 
 class YoloSam:
   def __init__(self, device, yolo_checkpoint, sam_checkpoint, model_type='vit_t', efficient_vit_enc=None, yolo_conf=0.2):

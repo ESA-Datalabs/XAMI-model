@@ -374,11 +374,11 @@ import PIL
 from PIL import Image
 
 sys.path.append('/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/')
-import ft_mobile_sam
-from ft_mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+import mobile_sam
+from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 # mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/weights/mobile_sam.pt"
-mobile_sam_checkpoint = "./ft_mobile_sam_final.pth"
+mobile_sam_checkpoint = "./mobile_sam_final.pth"
 device = "cuda:6" if torch.cuda.is_available() else "cpu"
 print("device:", device)
 
@@ -610,7 +610,7 @@ import predictor_utils
 reload(predictor_utils)
 from predictor_utils import *
 
-def validate_model_AMG(ft_mobile_sam_model, mobile_sam_model_orig):
+def validate_model_AMG(mobile_sam_model, mobile_sam_model_orig):
     validation_loss = []
     ft_validation_loss = []
     for val_img_path in val_image_paths[:5]:
@@ -913,7 +913,7 @@ for epoch in range(num_epochs):
     print(f'EPOCH: {epoch}. Training loss: {epoch_loss}')
     print(f'EPOCH: {epoch}. Validation loss: {epoch_val_loss}.')
 
-torch.save(best_model.state_dict(), f'ft_mobile_sam_final.pth')
+torch.save(best_model.state_dict(), f'mobile_sam_final.pth')
 
 
 # In[ ]:
@@ -936,7 +936,7 @@ print('epoch val losses:', epoch_val_loss)
 #                        SamAutomaticMaskGenerator as orig_mobile_SamAutomaticMaskGenerator, \
 #                        SamPredictor as orig_mobile_SamPredictor
 
-# # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/ft_mobile_sam_final.pth"
+# # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/mobile_sam_final.pth"
 # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-master/weights/mobile_sam.pt"
 # orig_mobile_sam_model = orig_mobile_sam_model_registry["vit_t"](checkpoint=orig_mobile_sam_checkpoint)
 # orig_mobile_sam_model.to(device);

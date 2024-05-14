@@ -267,10 +267,10 @@ import sys
 import PIL
 from PIL import Image
 sys.path.append('/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/')
-from ft_mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
+from mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/weights/mobile_sam.pt"
-# mobile_sam_checkpoint = "./ft_mobile_sam_final.pth"
+# mobile_sam_checkpoint = "./mobile_sam_final.pth"
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 mobile_sam_model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
 mobile_sam_model.to(device);
@@ -662,7 +662,7 @@ for epoch in range(num_epochs):
     print(f'EPOCH: {epoch}. Training loss: {epoch_loss}')
     print(f'EPOCH: {epoch}. Validation loss: {epoch_val_loss}.')
 
-torch.save(best_model.state_dict(), f'ft_mobile_sam_final_lr_sched.pth')
+torch.save(best_model.state_dict(), f'mobile_sam_final_lr_sched.pth')
 
 if use_wandb:
     wandb.run.summary["batch_size"] = batch_size
@@ -691,7 +691,7 @@ if check_orig:
                            SamAutomaticMaskGenerator as orig_mobile_SamAutomaticMaskGenerator, \
                            SamPredictor as orig_mobile_SamPredictor
     
-    # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/ft_mobile_sam_final.pth"
+    # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/mobile_sam_final.pth"
     orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-master/weights/mobile_sam.pt"
     orig_mobile_sam_model = orig_mobile_sam_model_registry["vit_t"](checkpoint=orig_mobile_sam_checkpoint)
     orig_mobile_sam_model.to(device);

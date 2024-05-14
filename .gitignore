@@ -85,3 +85,4 @@ mmdet_checkpoints/mask-rcnn_swin-s-p4-w7_fpn_amp-ms-crop-3x_coco.py
 model_checkpoints/intern-image.py
 mmdet_checkpoints/mask-rcnn_swin-s-p4-w7_fpn_amp-ms-crop-3x_coco.py
 _05_ft_MobileSAM_classif.py
+train/train_sam.ipynb
