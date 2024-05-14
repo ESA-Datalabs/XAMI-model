@@ -57,7 +57,6 @@ def transform_image(model, transform, image, k, device):
         # negative_mask = negative_mask.permute(2, 0, 1)
         # negative_mask = resize(negative_mask, [1024, 1024], antialias=True) 
         # negative_mask = negative_mask.unsqueeze(0)
-        
         # # scales the image to 1024x1024 by longest side 
         # input_image = transform.apply_image(image)
         # input_image_torch = torch.as_tensor(input_image, device=device)
@@ -68,12 +67,14 @@ def transform_image(model, transform, image, k, device):
         # original_image_size = image.shape[:2]
         # input_size = tuple(transformed_image.shape[-2:])
         # input_image[~negative_mask] = 0
-        # transformed_data['image'] = input_image
+        # transformed_data['image'] = input_image.clone() 
         # transformed_data['input_size'] = input_size 
         # transformed_data['image_id'] = k
         # transformed_data['original_image_size'] = original_image_size
     
         # return transformed_data
+
+
 
 def set_mean_and_transform(image, model, transform, device):
     

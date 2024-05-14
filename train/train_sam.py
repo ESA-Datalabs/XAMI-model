@@ -29,12 +29,18 @@ device_id = int(sys.argv[2])
 lr=3e-4
 wd=0.0005
 wandb_track=True
-batch_size=8
 num_epochs=50
 use_lr_warmup_and_decay=True
 work_dir = './output_sam'
 torch.cuda.set_device(device_id)
 device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
+
+# this variable is the original batch size
+# the effective batch size will be: original_batch_size * (number of augmentations + 1) 
+# if using applying augmentation
+# high values (e.g., 8, 16) may lead to OOM errors
+batch_size=4
+
 print("DEVICE", device)
 
 if not os.path.exists(work_dir):
@@ -44,7 +50,7 @@ else:
     
 # Dataset split
 
-input_dir = f'../../XAMI-dataset/mskf_{kfold_iter}/'
+input_dir = f'../../XAMI-dataset/xami_dataset/'
 train_dir = input_dir+f'train/'
 valid_dir = input_dir+f'valid/'
 json_train_path, json_valid_path = train_dir+'_annotations.coco.json', valid_dir+'_annotations.coco.json'
@@ -187,6 +193,17 @@ noise_blur_augmentations = A.Compose([
 
 cr_transforms = [geometrical_augmentations, noise_blur_augmentations]
 
+if len(cr_transforms) > 0:
+    print("🚀 Using augmentations.")
+
+# Intro
+# print some info
+print(f"🚀  Training {astrosam_model.model.__class__.__name__} with {len(train_dataloader)} training images and {len(val_dataloader)} validation images.")
+print(f"🚀  Training for {num_epochs} epochs with batch size {batch_size * (len(cr_transforms) + 1)} and learning rate {lr}.")
+print(f"🚀  Using {len(cr_transforms)} augmentations.")
+print(f"🚀  Early stopping after {n_epochs_stop} epochs without improvement.")
+print(f"🚀  Training started.\n")
+
 for epoch in range(num_epochs):
 
     # Train
@@ -247,7 +264,7 @@ torch.save(astrosam_model.model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{dat
 # torch.save(astrosam_model.residualAttentionBlock.state_dict(), f'{work_dir}/residual_attn_blk_{kfold_iter}_{datetime.now()}_best.pth')
 
 if wandb_track:
-    wandb.run.summary["batch_size"] = batch_size
+    wandb.run.summary["batch_size"] = batch_size * (len(cr_transforms) + 1)
     wandb.run.summary["best_epoch"] = best_epoch
     wandb.run.summary["best_valid_loss"] = best_valid_loss
     wandb.run.summary["num_epochs"] = num_epochs
