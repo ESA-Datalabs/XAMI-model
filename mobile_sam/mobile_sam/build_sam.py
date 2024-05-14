@@ -9,9 +9,7 @@ import torch
 from functools import partial
 
 from .modeling import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer, TinyViT
-# from efficientvit.models.efficientvit.backbone import EfficientViTLargeBackbone
-# from efficientvit.models.efficientvit.sam import SamNeck, EfficientViTSamImageEncoder
-# from efficientvit.models.nn.norm import set_norm_eps
+
 
 def build_sam_vit_h(checkpoint=None):
     return _build_sam(
@@ -94,93 +92,6 @@ def build_sam_vit_t(checkpoint=None):
         mobile_sam.load_state_dict(state_dict)
     return mobile_sam
 
-def build_efficientvit_l2_encoder(checkpoint):
-    print('checkpoint:',checkpoint)
-    backbone = EfficientViTLargeBackbone(
-                width_list=[32, 64, 128, 256, 512],
-                depth_list=[1, 2, 2, 8, 8],
-                in_channels=3,
-                qkv_dim=32,
-                norm="bn2d",
-                act_func="gelu",
-                )
-    neck = SamNeck(
-        fid_list=["stage4", "stage3", "stage2"],
-        in_channel_list=[512, 256, 128],
-        head_width=256,
-        head_depth=12,
-        expand_ratio=1,
-        middle_op="fmbconv",
-        out_dim=256,
-    )
-    image_encoder = EfficientViTSamImageEncoder(backbone, neck)
-    set_norm_eps(image_encoder, 1e-6)
-    checkpoints = torch.load(checkpoint)
-    checkpoint = checkpoints["state_dict"]
-    new_state_dict = {}
-    if checkpoint!=None:
-        for key, value in checkpoint.items():
-            index = key.find("image_encoder.")
-            if index != -1:
-                new_key = key[index + len("image_encoder."):]
-                new_state_dict[new_key] = value
-            else:
-                continue
-        image_encoder.load_state_dict(new_state_dict,strict=True)  # origin
-        print('checkpoint_load_success')
-    else:
-        print('EfficientViTSamImageEncoder checkpoint_load_failed. No checkpoint.')
-
-    return image_encoder
-
-def build_sam_vit_t_efficient_vit(checkpoint=None, efficient_vit_enc=None):
-    prompt_embed_dim = 256
-    image_size = 1024
-    vit_patch_size = 16
-    image_embedding_size = image_size // vit_patch_size
-    mobile_sam = Sam(
-            image_encoder=TinyViT(img_size=1024, in_chans=3, num_classes=1000,
-                embed_dims=[64, 128, 160, 320],
-                depths=[2, 2, 6, 2],
-                num_heads=[2, 4, 5, 10],
-                window_sizes=[7, 7, 14, 7],
-                mlp_ratio=4.,
-                drop_rate=0.,
-                drop_path_rate=0.0,
-                use_checkpoint=False,
-                mbconv_expand_ratio=4.0,
-                local_conv_size=3,
-                layer_lr_decay=0.8
-            ),
-            prompt_encoder=PromptEncoder(
-            embed_dim=prompt_embed_dim,
-            image_embedding_size=(image_embedding_size, image_embedding_size),
-            input_image_size=(image_size, image_size),
-            mask_in_chans=16,
-            ),
-            mask_decoder=MaskDecoder(
-                    num_multimask_outputs=3,
-                    transformer=TwoWayTransformer(
-                    depth=2,
-                    embedding_dim=prompt_embed_dim,
-                    mlp_dim=2048,
-                    num_heads=8,
-                ),
-                transformer_dim=prompt_embed_dim,
-                iou_head_depth=3,
-                iou_head_hidden_dim=256,
-            ),
-            pixel_mean=[123.675, 116.28, 103.53],
-            pixel_std=[58.395, 57.12, 57.375],
-        )
-    mobile_sam.image_encoder = build_efficientvit_l2_encoder(efficient_vit_enc)
-    mobile_sam.eval()
-    if checkpoint is not None:
-        with open(checkpoint, "rb") as f:
-            state_dict = torch.load(f)
-        mobile_sam.load_state_dict(state_dict)
-    return mobile_sam
-
 
 sam_model_registry = {
     "default": build_sam_vit_h,
@@ -188,7 +99,6 @@ sam_model_registry = {
     "vit_l": build_sam_vit_l,
     "vit_b": build_sam_vit_b,
     "vit_t": build_sam_vit_t,
-    "efficient_vit": build_sam_vit_t_efficient_vit,
 }
 
 
