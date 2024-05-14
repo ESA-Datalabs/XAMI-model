@@ -12,10 +12,10 @@ from segment_anything.utils.transforms import ResizeLongestSide
 import matplotlib.patches as patches
 import numpy as np
 from sam_predictor import predictor_utils
-from . import preprocess
 from torch.nn.functional import threshold, normalize
 from yolo_predictor import yolo_predictor_utils
 import torch.nn as nn
+# from torch.profiler import profile, record_function, ProfilerActivity
 
 # import sys
 # import warnings
@@ -49,7 +49,7 @@ class AstroSAM:
         negative_mask, 
         input_image, 
         cr_transforms=None, 
-        show_plot=False):
+        show_plot=True):
 
         ious = []
         image_loss=[]
@@ -124,7 +124,7 @@ class AstroSAM:
         dice = loss_utils.dice_loss_per_mask_pair(torch.squeeze(threshold_masks, dim=1), gt_threshold_masks, mask_areas) 
         # mse = F.mse_loss(threshold_masks.squeeze(1), gt_threshold_masks)
         image_loss.append(20 * focal + dice) 
-    
+
         transformed_losses = []
         
         # Apply consistency regulation
@@ -159,6 +159,9 @@ class AstroSAM:
                 image_loss += transformed_losses[i]
             # image_loss += torch.mean(transformed_losses)
             image_loss = image_loss/(len(transformed_losses)+1)
+                
+        # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=10))
+  
         # print('image_loss w augm', image_loss)
         
         # if show_plot:
@@ -214,7 +217,7 @@ class AstroSAM:
             image_loss=[]
             mask_areas = []
             transform = ResizeLongestSide(self.model.image_encoder.img_size)
-            input_image = preprocess.transform_image(self.model, transform, transformed_image, 'dummy_augm_id', self.device)
+            input_image = predictor_utils.transform_image(self.model, transform, transformed_image, 'dummy_augm_id', self.device)
             input_image = torch.as_tensor(input_image['image'], dtype=torch.float, device=self.predictor.device) # (B, C, 1024, 1024)
             image_embedding = self.model.image_encoder(input_image)
             
@@ -300,7 +303,7 @@ class AstroSAM:
             )
             
             del boxes
-            torch.cuda.empty_cache()
+            # torch.cuda.empty_cache()
             
             low_res_masks, iou_predictions = self.model.mask_decoder( # iou_pred [N, 1] where N - number of masks
             image_embeddings=image_embedding,
@@ -406,13 +409,14 @@ class AstroSAM:
         losses = []
 
         for inputs in tqdm(dataloader, desc=f'{mode[0].upper()+mode[1:]} Progress', bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
-            batch_loss = 0.0
+            batch_loss = torch.tensor(0.0, device=self.device)
             batch_size = len(inputs['image']) # sometimes, at the last iteration, there are fewer images than batch size
+            processed_images = batch_size
+            
             for i in range(batch_size):
                 image_masks = [k for k in gt_masks.keys() if k.startswith(inputs['image_id'][i])]
                 input_image = torch.as_tensor(inputs['image'][i], dtype=torch.float, device=self.predictor.device) # (B, C, 1024, 1024)
                 image = cv2.imread(input_dir+inputs['image_id'][i])
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 original_image_size = image.shape[:-1]
                 input_size = (1024, 1024)
                 
@@ -429,42 +433,35 @@ class AstroSAM:
                 negative_mask = negative_mask.to(self.device)
                      
                 # RUN PREDICTION ON IMAGE
-                if mode == 'validate':
-                    with torch.no_grad():
-                        if len(image_masks)>0:
-                            batch_loss += (self.one_image_predict(image_masks, gt_masks, gt_bboxes, image_embedding, 
-                                                            original_image_size, input_size, negative_mask, image, cr_transforms)) 
-                        # else:
-                        #     print(f"{inputs['image_id'][i]} has no annotations❗️")
-
-                if mode == 'train':
-                    if len(image_masks)>0:
-                        batch_loss += (self.one_image_predict(image_masks, gt_masks, gt_bboxes, image_embedding, 
-                                                        original_image_size, input_size, negative_mask, image, cr_transforms)) 
-                    # else:
-                    #     print(f"{inputs['image_id'][i]} has no annotations❗️")
+                if len(image_masks)>0:
+                    if mode == 'validate':
+                        with torch.no_grad():
+                            batch_loss = batch_loss+(self.one_image_predict(image_masks, gt_masks, gt_bboxes, image_embedding, 
+                                                                original_image_size, input_size, negative_mask, image, cr_transforms)) 
+                    if mode == 'train':
+                            batch_loss = batch_loss+(self.one_image_predict(image_masks, gt_masks, gt_bboxes, image_embedding, 
+                                                                original_image_size, input_size, negative_mask, image, cr_transforms))
+                            
+                else:
+                    processed_images -=1
                     
+            if processed_images == 0:
+                continue
+            
             if mode == 'train':
                 optimizer.zero_grad()
                 batch_loss.backward()
                 optimizer.step()
                 
-                if scheduler is not None:  # this back_step should be removed
+                if scheduler is not None: 
                     scheduler.step()
                     # print("Current LR:", optimizer.param_groups[0]['lr'])
-                    
-                del image_embedding, negative_mask, input_image, image
-                torch.cuda.empty_cache()
-
-                losses.append(batch_loss.item()/batch_size) #/loss_scaling_factor)
-            else:
-                # check if batch loss is float 
-                if isinstance(batch_loss, float):
-                    losses.append(batch_loss/batch_size)
-                else:
-                    losses.append(batch_loss.detach().cpu().numpy()/batch_size)
-                del batch_loss, image_embedding, negative_mask, input_image, image
-			
+                
+            losses.append(batch_loss.item()/processed_images)
+    
+            del batch_loss, image_embedding, negative_mask, input_image, image
+            torch.cuda.empty_cache()
+   
         return np.mean(losses)
       
             
@@ -646,7 +643,7 @@ class AstroSAM:
     #         image_loss=[]
     #         mask_areas = []
             
-    #         input_image = preprocess.transform_image(self.model, self.transform , transformed_image, 'dummy_augm_id', self.device)
+    #         input_image = predictor_utils.transform_image(self.model, self.transform , transformed_image, 'dummy_augm_id', self.device)
     #         input_image = torch.as_tensor(input_image['image'], dtype=torch.float, device=self.predictor.device) # (B, C, 1024, 1024)
             
     #         image_embedding = self.model.image_encoder(input_image)
