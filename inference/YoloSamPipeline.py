@@ -12,7 +12,7 @@ from sam_predictor import predictor_utils
 from ultralytics import YOLO, RTDETR
 from segment_anything.utils.transforms import ResizeLongestSide
 import tqdm
-sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/')
+sys.path.append('/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/')
 from ft_mobile_sam import sam_model_registry, SamPredictor #, build_efficientvit_l2_encoder
 
 class YoloSam:

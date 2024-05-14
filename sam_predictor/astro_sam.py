@@ -28,6 +28,8 @@ import torch.nn as nn
 
 # warnings.showwarning = warn_with_traceback
 
+# torch.autograd.set_detect_anomaly(True)
+
 class AstroSAM:
     def __init__(self, model, device, predictor, residualAttentionBlock=None):
         self.model = model
@@ -65,31 +67,9 @@ class AstroSAM:
             # process masks
             rle_to_mask = maskUtils.decode(input_masks[k]) # RLE to array
             gt_rle_to_masks.append(torch.from_numpy(rle_to_mask).to(self.device))
-            # mask_input_torch = torch.as_tensor(rle_to_mask, dtype=torch.float, device=self.predictor.device).unsqueeze(0)
-            # mask_input_torch = F.interpolate(
-            #     mask_input_torch.unsqueeze(0), 
-            #     size=(256, 256), 
-            #     mode='bilinear', 
-            #     align_corners=False)
-            # masks.append(mask_input_torch.squeeze(0))
             mask_areas.append(np.sum(rle_to_mask))
-
-            # # process coords and labels
-            # x_min, y_min, x_max, y_max = input_bboxes[k]
-            # x_min, y_min, x_max, y_max = map(int, [x_min, y_min, x_max, y_max])
-            # point_coords = np.array([(input_bboxes[k][2]+input_bboxes[k][0])/2.0, (input_bboxes[k][3]+input_bboxes[k][1])/2.0])
-            # point_labels = np.array([1])
-            # point_coords = self.predictor.transform.apply_coords(point_coords, original_image_size)
-            # coords_torch = torch.as_tensor(point_coords, dtype=torch.float, device=self.predictor.device).unsqueeze(0)
-            # labels_torch = torch.as_tensor(point_labels, dtype=torch.int, device=self.predictor.device)
-            # coords.append(coords_torch)
-            # coords_labels.append(labels_torch)
-
+            
         boxes = torch.stack(boxes, dim=0)
-        # masks = torch.stack(masks, dim=0)
-        # coords = torch.stack(coords, dim=0)
-        # coords_labels = torch.stack(coords_labels, dim=0)
-        # points = (coords, coords_labels)
         gt_rle_to_masks = torch.stack(gt_rle_to_masks, dim=0)
         
         sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
@@ -98,7 +78,7 @@ class AstroSAM:
         masks=None, 
         )
 
-        del box_torch#, coords_torch, labels_torch, masks
+        del box_torch
         torch.cuda.empty_cache()
         
         low_res_masks, iou_predictions = self.model.mask_decoder( # iou_pred [N, 1] where N - number of masks
@@ -106,13 +86,13 @@ class AstroSAM:
         image_pe=self.model.prompt_encoder.get_dense_pe(),
         sparse_prompt_embeddings=sparse_embeddings,
         dense_prompt_embeddings=dense_embeddings,
-        multimask_output=True, # True value works better for ambiguous prompts (single points)
+        multimask_output=True,
         )
         
         max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256))
         max_ious = torch.zeros((iou_predictions.shape[0], 1))
         
-        # Take all low_res_mask correspnding to the index of max_iou
+        # Take all low_res_mask corresponding to the index of max_iou
         for i in range(low_res_masks.shape[0]):
             max_iou_index = torch.argmax(iou_predictions[i])
             max_low_res_masks[i] = low_res_masks[i][max_iou_index].unsqueeze(0)
@@ -173,10 +153,8 @@ class AstroSAM:
 
         if len(transformed_losses)>0:
             transformed_loss = torch.stack(transformed_losses)
-            # for i in range(len(transformed_losses)):
-                # transformed_loss = transformed_loss + transformed_losses[i]
-            transformed_loss = transformed_loss/len(transformed_losses)
-            image_loss = (torch.mean(image_loss) + torch.mean(transformed_loss))/2
+            # transformed_loss = transformed_loss/len(transformed_losses)
+            image_loss = torch.mean(image_loss) + torch.mean(transformed_loss)
         
         image_loss = (torch.mean(image_loss) + torch.mean(iou_image_loss))/2
         
@@ -206,7 +184,7 @@ class AstroSAM:
         #     axs[2].imshow(input_image) 
         #     dataset_utils.show_masks(threshold_masks.permute(1, 0, 2, 3)[0].detach().cpu().numpy(), axs[2], random_color=False)
         #     axs[2].set_title('Pred masks', fontsize=40)
-        #     plt.savefig(f'/workspace/raid/OM_DeepLearning/XMM_OM_code_git/{k.split(".")[0]}_masks.png')
+        #     plt.savefig(f'/workspace/raid/OM_DeepLearning/XAMI/{k.split(".")[0]}_masks.png')
         #     plt.show()
         #     plt.close()
             
@@ -232,6 +210,7 @@ class AstroSAM:
             ious = []
             image_loss=[]
             mask_areas = []
+            
             input_image = preprocess.transform_image(self.model, self.transform , transformed_image, 'dummy_augm_id', self.device)
             input_image = torch.as_tensor(input_image['image'], dtype=torch.float, device=self.predictor.device) # (B, C, 1024, 1024)
             
@@ -246,7 +225,7 @@ class AstroSAM:
             for k in range(len(transformed_masks)):
                 mask_to_box = dataset_utils.mask_to_bbox(transformed_masks[k])
                 box = (mask_to_box[0], mask_to_box[1], mask_to_box[2]-mask_to_box[0], mask_to_box[3]-mask_to_box[1])
-                if box[2]> 0 and box[3] > 0: # remove invalid  boxes
+                if box[2]> 0 and box[3] > 0: # kepp valid boxes
                     transformed_boxes_from_masks.append(box)
                 
             transformed_boxes_from_masks = np.array(transformed_boxes_from_masks)
@@ -284,7 +263,7 @@ class AstroSAM:
             #     axs[1].imshow(transformed_image)
             #     plt.show()
             #     plt.close()
-                
+                    
             for k in range(len(transformed_masks)): 
                 prompt_box = np.array(dataset_utils.mask_to_bbox(transformed_masks[k])) # XYXY format
                 box = self.predictor.transform.apply_boxes(prompt_box, original_image_size)
@@ -326,7 +305,7 @@ class AstroSAM:
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=True, # True value works better for ambiguous prompts (single points)
             )
-                   
+                
             max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256))
             max_ious = torch.zeros((iou_predictions.shape[0], 1))
             
@@ -340,7 +319,7 @@ class AstroSAM:
             iou_predictions = max_ious
             iou_image_loss = []
             pred_masks = self.model.postprocess_masks(low_res_masks, input_size, original_image_size).to(self.device)
-
+        
             # Apply Gaussian filter on logits
             # kernel_size = 5
             # sigma = 2

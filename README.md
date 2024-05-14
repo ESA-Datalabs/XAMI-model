@@ -14,9 +14,8 @@ Information about the configuration of the OM (e.g.: sub-windows stacking) can b
 ## Clone the repo:
 
 ```
-git clone git@hf.co:iulia-elisa/xmm_om_model
-pip install git+https://huggingface.co/iulia-elisa/xmm_om_model
-cd xmm_om_model
+git clone https://github.com/ESA-Datalabs/XAMI.git
+cd XAMI
 ```
 
 ## Running the Model Pipeline

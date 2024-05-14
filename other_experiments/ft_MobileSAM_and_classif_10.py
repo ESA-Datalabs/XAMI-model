@@ -275,10 +275,10 @@ if use_augmentation:
 import sys
 import PIL
 from PIL import Image
-sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/')
+sys.path.append('/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/')
 from ft_mobile_sam import sam_model_registry, SamPredictor
 
-mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/weights/mobile_sam.pt"
+mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/weights/mobile_sam.pt"
 # mobile_sam_checkpoint = "./ft_mobile_sam_final.pth"
 
 device = "cuda:3" if torch.cuda.is_available() else "cpu"
@@ -833,7 +833,7 @@ if check_orig:
     from mobile_sam import sam_model_registry as orig_mobile_sam_model_registry, \
                            SamPredictor as orig_mobile_SamPredictor
     
-    # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XMM_OM_code_git/ft_mobile_sam_final.pth"
+    # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/ft_mobile_sam_final.pth"
     orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-master/weights/mobile_sam.pt"
     orig_mobile_sam_model = orig_mobile_sam_model_registry["vit_t"](checkpoint=orig_mobile_sam_checkpoint)
     orig_mobile_sam_model.to(device);

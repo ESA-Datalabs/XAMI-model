@@ -44,7 +44,7 @@ else:
     
 # Dataset split
 
-input_dir = f'../../AstroArtefactToolkit_XMMoptical/mskf_{kfold_iter}/'
+input_dir = f'../../XAMI-dataset/mskf_{kfold_iter}/'
 train_dir = input_dir+f'train/'
 valid_dir = input_dir+f'valid/'
 json_train_path, json_valid_path = train_dir+'_annotations.coco.json', valid_dir+'_annotations.coco.json'
@@ -98,11 +98,11 @@ train_data_in['categories']
 # In[12]:
 
 import sys
-sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/')
+sys.path.append('/workspace/raid/OM_DeepLearning/XAMI/mobile_sam')
 from ft_mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
 
 # Segment Anything Model
-mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/weights/mobile_sam.pt"
+mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/mobile_sam/weights/mobile_sam.pt"
 model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
 model.to(device);
 predictor = SamPredictor(model)
@@ -120,7 +120,7 @@ if wandb_track:
     # !wandb login --relogin
     import wandb
     wandb.login()
-    run = wandb.init(project="OM_AI_v1", name=f"sam_{datetime.now()}")
+    run = wandb.init(project="sam", name=f"sam_{kfold_iter}_{datetime.now()}")
     wandb.watch(astrosam_model.model, log='all', log_graph=True)
 
 ## Convert the input images into a format SAM's internal functions expect.

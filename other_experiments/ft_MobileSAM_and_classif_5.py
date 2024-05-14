@@ -48,11 +48,11 @@ from predictor_utils import *
 # In[2]:
 
 
-# input_dir = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/xmm_om_images-contrast-512-v5-3/train/'
-# json_file_path = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/xmm_om_images-contrast-512-v5-3/train/_annotations.coco.json'
+# input_dir = '/workspace/raid/OM_DeepLearning/XAMI/xmm_om_images-contrast-512-v5-3/train/'
+# json_file_path = '/workspace/raid/OM_DeepLearning/XAMI/xmm_om_images-contrast-512-v5-3/train/_annotations.coco.json'
 
-input_dir = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/-xmm_om_images_v4-contrast-512-5-2/train/'
-json_file_path = '/workspace/raid/OM_DeepLearning/XMM_OM_code_git/-xmm_om_images_v4-contrast-512-5-2/train/_annotations.coco.json'
+input_dir = '/workspace/raid/OM_DeepLearning/XAMI/-xmm_om_images_v4-contrast-512-5-2/train/'
+json_file_path = '/workspace/raid/OM_DeepLearning/XAMI/-xmm_om_images_v4-contrast-512-5-2/train/_annotations.coco.json'
 
 # COCO segmentation bboxes are in XYWH format
 with open(json_file_path) as f:
@@ -373,11 +373,11 @@ import sys
 import PIL
 from PIL import Image
 
-sys.path.append('/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/')
+sys.path.append('/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/')
 import ft_mobile_sam
 from ft_mobile_sam import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
-# mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-fine-tuning/weights/mobile_sam.pt"
+# mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/weights/mobile_sam.pt"
 mobile_sam_checkpoint = "./ft_mobile_sam_final.pth"
 device = "cuda:6" if torch.cuda.is_available() else "cpu"
 print("device:", device)
@@ -936,7 +936,7 @@ print('epoch val losses:', epoch_val_loss)
 #                        SamAutomaticMaskGenerator as orig_mobile_SamAutomaticMaskGenerator, \
 #                        SamPredictor as orig_mobile_SamPredictor
 
-# # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XMM_OM_code_git/ft_mobile_sam_final.pth"
+# # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/ft_mobile_sam_final.pth"
 # orig_mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/MobileSAM-master/weights/mobile_sam.pt"
 # orig_mobile_sam_model = orig_mobile_sam_model_registry["vit_t"](checkpoint=orig_mobile_sam_checkpoint)
 # orig_mobile_sam_model.to(device);

@@ -128,7 +128,7 @@ def build_totalmask(pred: List[Dict[str, Any]]) -> np.ndarray:
 
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 
-sam = sam_model_registry["vit_h"](checkpoint="../MobileSAM-fine-tuning/weights/sam_vit_h_4b8939.pth")
+sam = sam_model_registry["vit_h"](checkpoint="../mobile_sam/weights/sam_vit_h_4b8939.pth")
 mask_generator = SamAutomaticMaskGenerator(sam)
 sam.to(DEVICE)
 
@@ -653,7 +653,7 @@ def train_one_epoch(model, trainloader, optimizer, epoch_idx):
 def train(n_epochs_stop):
     """ Trains the model for the given number of epochs."""
     model = ModelSimple()
-    model.setup('vit_h', "../MobileSAM-fine-tuning/weights/sam_vit_h_4b8939.pth")
+    model.setup('vit_h', "../mobile_sam/weights/sam_vit_h_4b8939.pth")
 
     if use_wandb:
         wandb.watch(model, log='all', log_graph=True)
@@ -781,7 +781,7 @@ def evaluate_model(fine_tuned = True):
 
     with torch.no_grad():
         model = ModelSimple()
-        model.setup('vit_h', "../MobileSAM-fine-tuning/weights/sam_vit_h_4b8939.pth")
+        model.setup('vit_h', "../mobile_sam/weights/sam_vit_h_4b8939.pth")
 
         if fine_tuned:
             model.load_state_dict(torch.load('model_final_all_masks.pth', map_location=torch.device(device_id)))
