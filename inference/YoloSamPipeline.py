@@ -12,11 +12,13 @@ from sam_predictor import predictor_utils
 from ultralytics import YOLO, RTDETR
 from segment_anything.utils.transforms import ResizeLongestSide
 import tqdm
-sys.path.append('/workspace/raid/OM_DeepLearnin/XAMI/mobile_sam/')
-from mobile_sam import sam_model_registry, SamPredictor #, build_efficientvit_l2_encoder
+
+import sys
+sys.path.append('/workspace/raid/OM_DeepLearning/XAMI/mobile_sam')
+from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
 
 class YoloSam:
-  def __init__(self, device, yolo_checkpoint, sam_checkpoint, model_type='vit_t', efficient_vit_enc=None, yolo_conf=0.2):
+  def __init__(self, device, yolo_checkpoint, sam_checkpoint, model_type='vit_t'):
     print("Initializing the model...")
 
     self.device = device
@@ -29,8 +31,6 @@ class YoloSam:
                     4:('star-loop', (255, 188, 248))}
 
     self.use_yolo_masks = True # whether to use YOLO masks for faint sources
-    self.yolo_conf = yolo_conf
-    self.efficient_vit_enc = efficient_vit_enc	
 
     # Step 1: Object detection with YOLO
     if 'detr' in yolo_checkpoint:
@@ -47,11 +47,8 @@ class YoloSam:
     self.model_warmup()
 
   def load_sam_model(self, model_type="vit_t"):
-    if self.efficient_vit_enc is not None:
-      mobile_sam_model = sam_model_registry[model_type](checkpoint=self.sam_checkpoint, efficient_vit_enc=self.efficient_vit_enc)
-    else:
-      mobile_sam_model = sam_model_registry[model_type](checkpoint=self.sam_checkpoint)
     
+    mobile_sam_model = sam_model_registry[model_type](checkpoint=self.sam_checkpoint)
     mobile_sam_model.to(self.device);
     mobile_sam_model.eval();
     predictor = SamPredictor(mobile_sam_model)
@@ -70,7 +67,7 @@ class YoloSam:
     """
     # Warm up YOLO model
     for _ in tqdm.tqdm(range(number_of_runs), desc="Warming up YOLO model", bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
-      _ = self.yolo_model.predict('./inference/warmup_image.png', verbose=False, conf=self.yolo_conf) 
+      _ = self.yolo_model.predict('./inference/warmup_image.png', verbose=False, conf=0.2) 
 
     # Warm up SAM model
     for _ in tqdm.tqdm(range(number_of_runs), desc="Warming up SAM model", bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
@@ -80,11 +77,11 @@ class YoloSam:
       )
       
   @torch.no_grad()
-  def run_predict(self, image_path, show_masks=False):
+  def run_predict(self, image_path, yolo_conf=0.2, show_masks=False):
 
     start_time_all = time.time()
     image = cv2.imread(image_path)
-    obj_results = self.yolo_model.predict(image_path, verbose=False, conf=self.yolo_conf) 
+    obj_results = self.yolo_model.predict(image_path, verbose=False, conf=yolo_conf) 
 
     # set a specific mean for each image
     input_image = predictor_utils.set_mean_and_transform(image, self.mobile_sam_model, self.transform, self.device)
@@ -107,11 +104,11 @@ class YoloSam:
     
     low_res_masks, iou_predictions = self.run_sam_model(input_image, input_boxes)
 
-    # print('Number of object detected:', len(iou_predictions))
-    # for predicted_class in predicted_classes.unique():
-    #   rgb = self.classes[predicted_class.item()][1]
-    #   escape_code = f'\x1b[48;2;{rgb[0]};{rgb[1]};{rgb[2]}m \x1b[0m'
-    #   print(escape_code+escape_code, self.classes[predicted_class.item()][0], end='\n')
+    print('Number of object detected:', len(iou_predictions))
+    for predicted_class in predicted_classes.unique():
+      rgb = self.classes[predicted_class.item()][1]
+      escape_code = f'\x1b[48;2;{rgb[0]};{rgb[1]};{rgb[2]}m \x1b[0m'
+      print(escape_code+escape_code, self.classes[predicted_class.item()][0], end='\n')
         
     low_res_masks=self.sam_predictor.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
     

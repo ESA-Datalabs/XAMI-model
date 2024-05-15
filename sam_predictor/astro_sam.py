@@ -89,7 +89,7 @@ class AstroSAM:
         image_pe=self.model.prompt_encoder.get_dense_pe(),
         sparse_prompt_embeddings=sparse_embeddings,
         dense_prompt_embeddings=dense_embeddings,
-        multimask_output=True, # True value works better for ambiguous prompts (single points)
+        multimask_output=True, 
         )
         
         max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256))
@@ -137,7 +137,7 @@ class AstroSAM:
                     image=input_image, 
                     bboxes=bboxes.reshape(-1,4), # flatten bboxes
                     masks=gt_rle_to_masks.detach().cpu().numpy(),
-                    category_id= [1] * boxes.shape[0]) # I don't use labels for the moment 
+                    category_id= [1] * boxes.shape[0]) # we don't use labels for the moment 
         
                 transformed_image = transformed['image']
                 transformed_bboxes = transformed['bboxes']
@@ -154,16 +154,10 @@ class AstroSAM:
         iou_image_loss = torch.stack(iou_image_loss)
         image_loss = torch.mean(image_loss) + torch.mean(iou_image_loss) #* loss_scaling_factor
         if len(transformed_losses)>0:
-            # transformed_losses = torch.stack(transformed_losses)
             for i in range(len(transformed_losses)):
                 image_loss += transformed_losses[i]
-            # image_loss += torch.mean(transformed_losses)
             image_loss = image_loss/(len(transformed_losses)+1)
                 
-        # print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=10))
-  
-        # print('image_loss w augm', image_loss)
-        
         # if show_plot:
         #     for i in range(threshold_masks.shape[0]):
         #         fig, axs = plt.subplots(1, 3, figsize=(40, 20))
@@ -265,13 +259,7 @@ class AstroSAM:
                 plt.close()
                 
             for k in range(len(transformed_masks)): 
-                # prompt_box = np.array(transformed_masks[k])
-                # print('mask area', np.sum(transformed_masks[k]))
                 prompt_box = np.array(dataset_utils.mask_to_bbox(transformed_masks[k])) # XYXY format
-                # prompt_box[0]-=2.0
-                # prompt_box[1]-=2.0
-                # prompt_box[2]+=2.0
-                # prompt_box[3]+=2.0
                 box = self.predictor.transform.apply_boxes(prompt_box, original_image_size)
                 box_torch = torch.as_tensor(box, dtype=torch.float, device=self.device)
                 boxes.append(box_torch)
@@ -303,7 +291,7 @@ class AstroSAM:
             )
             
             del boxes
-            # torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
             
             low_res_masks, iou_predictions = self.model.mask_decoder( # iou_pred [N, 1] where N - number of masks
             image_embeddings=image_embedding,

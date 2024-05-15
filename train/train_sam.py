@@ -30,7 +30,7 @@ lr=3e-4
 wd=0.0005
 wandb_track=True
 num_epochs=50
-use_lr_warmup_and_decay=True
+use_lr_warmup=True
 work_dir = './output_sam'
 torch.cuda.set_device(device_id)
 device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
@@ -71,12 +71,6 @@ train_gt_masks, train_bboxes, train_classes, train_class_categories = dataset_ut
 val_gt_masks, val_bboxes, val_classes, val_class_categories = dataset_utils.get_coords_and_masks_from_json(
     valid_dir, 
     valid_data) # type: ignore
-
-# In[8]:
-
-print('# dataset images: \ntrain', len(training_image_paths), '\nvalid', len(val_image_paths))
-
-# In[9]:
 
 train_data_in['categories']
 
@@ -154,7 +148,7 @@ optimizer = torch.optim.AdamW(parameters_to_optimize, lr=lr, weight_decay=wd)
 # Scheduler
 scheduler=None
 
-if use_lr_warmup_and_decay:
+if use_lr_warmup:
     initial_lr = lr
     final_lr = 6e-5
     total_steps = batch_size  # total steps over which the learning rate should decrease
@@ -168,7 +162,7 @@ if use_lr_warmup_and_decay:
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
 # Model weights
-print(f"🚀 The SAM model has {sum(p.numel() for p in astrosam_model.model.parameters() if p.requires_grad)} trainable parameters.\n")
+print(f"🚀  The SAM model has {sum(p.numel() for p in astrosam_model.model.parameters() if p.requires_grad)} trainable parameters.\n")
 # print(f"🚀 The ResAttnBlock has {sum(p.numel() for p in astrosam_model.residualAttentionBlock.parameters() if p.requires_grad)} trainable parameters.\n")
 # predictor_utils.check_requires_grad(astrosam_model.model)
 
@@ -178,30 +172,43 @@ valid_losses = []
 best_valid_loss = float('inf')
 n_epochs_stop = 5+num_epochs/10
 
-# Augmentations
-geometrical_augmentations = A.Compose([
-        A.Flip(p=0.8),
-        A.RandomRotate90(p=0.7),
-        A.RandomSizedCrop((512 - 20, 512 - 20), 512, 512, p=0.8),
-    ], bbox_params={'format':'coco', 'label_fields': ['category_id']}, p=1)
+# # Augmentations
+# geometrical_augmentations = A.Compose([
+#         A.Flip(p=0.8),
+#         A.RandomRotate90(p=0.7),
+#         A.RandomSizedCrop((512 - 20, 512 - 20), 512, 512, p=0.8),
+#     ], bbox_params={'format':'coco', 'label_fields': ['category_id']}, p=1)
     
-noise_blur_augmentations = A.Compose([
-        A.GaussianBlur(blur_limit=(3, 3), p=0.9),
-        A.GaussNoise(var_limit=(10.0, 50.0), p=0.8),
-        A.ISONoise(p=0.7),
-    ], bbox_params={'format':'coco', 'label_fields': ['category_id']}, p=1)
+# noise_blur_augmentations = A.Compose([
+#         A.GaussianBlur(blur_limit=(3, 3), p=0.9),
+#         A.GaussNoise(var_limit=(10.0, 50.0), p=0.8),
+#         A.ISONoise(p=0.7),
+#     ], bbox_params={'format':'coco', 'label_fields': ['category_id']}, p=1)
 
-cr_transforms = [geometrical_augmentations, noise_blur_augmentations]
+combined_augmentations = A.Compose([
+    # Geometric transformations 
+    A.Flip(p=0.5),  
+    A.RandomRotate90(p=0.5),  
+    A.RandomSizedCrop((492, 492), 512, 512, p=0.6),  
+
+    # Noise and blur transformations
+    A.GaussianBlur(blur_limit=(3, 7), p=0.7), 
+    A.GaussNoise(var_limit=(10.0, 50.0), p=0.6), 
+    A.ISONoise(p=0.5), 
+
+], bbox_params={'format': 'coco', 'label_fields': ['category_id']}, p=1)
+cr_transforms = [combined_augmentations]
 
 if len(cr_transforms) > 0:
-    print("🚀 Using augmentations.")
+    print(f"🚀  Using {len(cr_transforms)} augmentations.")
 
 # Intro
-# print some info
-print(f"🚀  Training {astrosam_model.model.__class__.__name__} with {len(train_dataloader)} training images and {len(val_dataloader)} validation images.")
-print(f"🚀  Training for {num_epochs} epochs with batch size {batch_size * (len(cr_transforms) + 1)} and learning rate {lr}.")
-print(f"🚀  Using {len(cr_transforms)} augmentations.")
-print(f"🚀  Early stopping after {n_epochs_stop} epochs without improvement.")
+
+print(f"🚀  Training {astrosam_model.model.__class__.__name__} with {len(training_image_paths)} training images and {len(val_image_paths)} validation images.")
+print(f"🚀  Training for {num_epochs} epochs with effective batch size {batch_size * (len(cr_transforms) + 1)} and learning rate {lr}.")
+print(f"🚀  Initial learning rate: {lr}. Weight decay: {wd}.")
+print(f"🚀  Using leanring rate warmup scheduler: {use_lr_warmup}. ")
+print(f"🚀  Early stopping after {int(n_epochs_stop)} epochs without improvement.")
 print(f"🚀  Training started.\n")
 
 for epoch in range(num_epochs):
@@ -237,28 +244,31 @@ for epoch in range(num_epochs):
             cr_transforms = None,
             scheduler=None)
             
-        valid_losses.append(epoch_val_loss)
-        
-        # Logging
-        if wandb_track:
-            wandb.log({'epoch training loss': epoch_loss, 'epoch validation loss': epoch_val_loss})
-        
-        print(f'EPOCH: {epoch}. Training loss: {epoch_loss}')
-        print(f'EPOCH: {epoch}. Validation loss: {epoch_val_loss}.')
-        
-        if epoch_val_loss < best_valid_loss:
-            best_valid_loss = epoch_val_loss
-            best_epoch = epoch
-            best_model = astrosam_model.model
-            # best_residual_attn = residualAttentionBlock
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
-            if epochs_no_improve == n_epochs_stop:
-                print("Early stopping initiated.")
-                early_stop = True
-                break
-				
+    valid_losses.append(epoch_val_loss)
+
+    # Logging
+    if wandb_track:
+        wandb.log({'epoch training loss': epoch_loss, 'epoch validation loss': epoch_val_loss})
+
+    print(f'EPOCH: {epoch}. Training loss: {epoch_loss}')
+    print(f'EPOCH: {epoch}. Validation loss: {epoch_val_loss}.')
+
+    if epoch_val_loss < best_valid_loss:
+        best_valid_loss = epoch_val_loss
+        best_epoch = epoch
+        best_model = astrosam_model.model
+        # best_residual_attn = residualAttentionBlock
+        epochs_no_improve = 0
+    else:
+        epochs_no_improve += 1
+        if epochs_no_improve == n_epochs_stop:
+            print("Early stopping initiated.")
+            early_stop = True
+            break
+			
+    if epoch % 10 == 0:
+        torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_e{epoch}_{datetime.now()}_best.pth')
+                
 torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_best.pth')
 torch.save(astrosam_model.model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_last.pth')
 # torch.save(astrosam_model.residualAttentionBlock.state_dict(), f'{work_dir}/residual_attn_blk_{kfold_iter}_{datetime.now()}_best.pth')
