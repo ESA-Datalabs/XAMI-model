@@ -8,7 +8,7 @@ yolov8n.pt
 /weight/*
 /weights/*  
 /plots/*
-*.png
+train/yolov8-segm-*
 *.jpg
 *.pdf
 /wandb/*
