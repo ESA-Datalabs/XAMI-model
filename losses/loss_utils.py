@@ -141,8 +141,8 @@ def segm_loss_match_hungarian_compared(
         
         dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
         focal_loss = compute_focal_loss(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
-        dice_loss_yolo = compute_dice_loss(yolo_pred_masks[pred_idx], gt_masks[gt_idx])
-        focal_loss_yolo = compute_focal_loss(yolo_pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
+        # dice_loss_yolo = compute_dice_loss(yolo_pred_masks[pred_idx], gt_masks[gt_idx])
+        # focal_loss_yolo = compute_focal_loss(yolo_pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
         
         good_mask = pred_masks[pred_idx]
         # if wt_mask is not None and wt_classes is not None:

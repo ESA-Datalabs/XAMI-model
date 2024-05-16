@@ -9,7 +9,6 @@ from datetime import datetime
 import torch
 import numpy as np
 import json
-import sys
 import cv2
 from pycocotools import mask as maskUtils
 np.set_printoptions(precision=9)
@@ -21,7 +20,7 @@ relative_project_path = os.path.join(os.path.dirname(__file__), '../')
 sys.path.append(relative_project_path)
 print('Project path:', relative_project_path)
 from dataset import dataset_utils
-from sam_predictor import load_dataset, astro_sam, predictor_utils #, residualAttentionBlock
+from sam_predictor import load_dataset, astro_sam #, residualAttentionBlock
 
 kfold_iter = int(sys.argv[1])
 device_id = int(sys.argv[2])
@@ -32,12 +31,12 @@ wandb_track=True
 num_epochs=50
 use_lr_warmup=True
 work_dir = './output_sam'
-torch.cuda.set_device(device_id)
+# torch.cuda.set_device(device_id)
 device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
 
 # this variable is the original batch size
 # the effective batch size will be: original_batch_size * (number of augmentations + 1) 
-# if using applying augmentation
+# if applying augmentations
 # high values (e.g., 8, 16) may lead to OOM errors
 batch_size=4
 
@@ -151,7 +150,7 @@ scheduler=None
 if use_lr_warmup:
     initial_lr = lr
     final_lr = 6e-5
-    total_steps = batch_size  # total steps over which the learning rate should decrease
+    total_steps = 16  # total steps over which the learning rate should decrease
     lr_decrement = (initial_lr - final_lr) / total_steps
 
     def lr_lambda(current_step):
@@ -170,7 +169,7 @@ print(f"🚀  The SAM model has {sum(p.numel() for p in astrosam_model.model.par
 train_losses = []
 valid_losses = []
 best_valid_loss = float('inf')
-n_epochs_stop = 5+num_epochs/10
+n_epochs_stop = 20 #5+num_epochs/10
 
 # # Augmentations
 # geometrical_augmentations = A.Compose([
@@ -207,8 +206,8 @@ if len(cr_transforms) > 0:
 print(f"🚀  Training {astrosam_model.model.__class__.__name__} with {len(training_image_paths)} training images and {len(val_image_paths)} validation images.")
 print(f"🚀  Training for {num_epochs} epochs with effective batch size {batch_size * (len(cr_transforms) + 1)} and learning rate {lr}.")
 print(f"🚀  Initial learning rate: {lr}. Weight decay: {wd}.")
-print(f"🚀  Using leanring rate warmup scheduler: {use_lr_warmup}. ")
-print(f"🚀  Early stopping after {int(n_epochs_stop)} epochs without improvement.")
+print(f"🚀  Using learning rate warmup scheduler: {use_lr_warmup}. ")
+print(f"🚀  Early stopping after {n_epochs_stop} epochs without improvement.")
 print(f"🚀  Training started.\n")
 
 for epoch in range(num_epochs):

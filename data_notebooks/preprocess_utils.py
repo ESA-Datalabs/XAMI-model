@@ -86,7 +86,7 @@ def image_stretch(data, stretch='log', factor=1):
 #     - final_image (numpy.ndarray): The image after rescaling, with the same shape 
 #       as the input image.
 #     """
-    
+
 #     flat_image = image.flatten()
 #     flat_mask = negative_mask.flatten()
 
@@ -288,7 +288,7 @@ def get_normalized_centers(data_2D, hw_threshold=30, clip_sigma=2.5, kernel_sigm
 		return normalized_centers
 	else:
 		return None
-		
+
 def clahe_algo_image(IMAGE_PATH, clipLimit=3.0, tileGridSize=(8,8)):
 
     image = cv2.imread(IMAGE_PATH.replace(".fits", ".png"))
