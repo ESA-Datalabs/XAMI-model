@@ -13,6 +13,13 @@ git clone https://github.com/ESA-Datalabs/XAMI.git
 cd XAMI
 ```
 
+## Creating the environment
+
+```bash
+conda env create -f environment.yml
+conda activate xami_env
+```
+
 ## Running the Model Pipeline
 
 After cloning the repository and setting up your environment, use the following Python code for model loading and inference.
@@ -21,20 +28,24 @@ After cloning the repository and setting up your environment, use the following 
 import sys
 from inference.YoloSamPipeline import YoloSam
 
-yolo_checkpoint = './train/yolov8-segm-0/yolov8n-seg/weights/best.pt'
-sam_checkpoint = './output_sam/ft_mobile_sam_final_2024-05-05 18:38:00.526813.pth'
-device_id = 3
+yolo_checkpoint = './train/weights/yolo_weights/best.pt'
+sam_checkpoint = './train/weights/sam_weights/sam_0_best.pth'
+device_id = 0
 
-# the checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
+# the SAM model checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
 yolo_sam_pipeline = YoloSam(
     device=f'cuda:{device_id}', 
     yolo_checkpoint=yolo_checkpoint, 
     sam_checkpoint=sam_checkpoint, 
     model_type='vit_t')
 
-# predict
-masks = yolo_sam_pipeline.run_predict('./path/to/image', yolo_conf=0.2, show_masks=True)
+# prediction example
+masks = yolo_sam_pipeline.run_predict('./example_images/S0743200101_V.jpg', yolo_conf=0.2, show_masks=True)
 ```
+
+## Training the model
+
+Check the training [README.md](https://github.com/ESA-Datalabs/XAMI/blob/main/train/README.md).
 
 ## Licence 
 
