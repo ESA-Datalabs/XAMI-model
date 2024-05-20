@@ -4,12 +4,74 @@ from PIL import Image
 import yaml
 from ultralytics import RTDETR
 import sys
+import json
+import os
 
-iter = sys.argv[1]
 
+# Append project path when running in CLI
+# Otherwise, the project path is already in the sys.path
+# relative_project_path = os.path.join(sys.path[0], '../')
+relative_project_path = os.path.join(os.path.dirname(__file__), '../')
+sys.path.append(relative_project_path)
+print('Project path:', relative_project_path)
+from dataset import coco_to_yolo_converter
+
+if len(sys.argv) ==1:
+    iter = 0
+elif len(sys.argv) == 2:
+    iter = sys.argv[1]
+else:
+    print("Usage: python train_detector.py [iter]")
+    sys.exit(1)
+
+#  Convert the dataset form COCO IS format into YOLOv8
+
+convert = True
+
+if convert:
+    dir_absolute_path = '/workspace/raid/test/XAMI/'
+    dataset_path = '../xami_dataset/' 
+    json_file_path = dataset_path+'train/'+'_annotations.coco.json' # need only training example
+    # YOLO yaml files works with absolute paths. Replace this with the actual absolute path to the dataset.
+    dataset_absolute_path = dir_absolute_path+'xami_dataset/'
+    yolo_dataset_path = f"../xami_dataset_YOLO/" # path to YOLO output dataset
+    
+    with open(json_file_path) as f:
+        data_in = json.load(f)
+        
+    classes = [str(cat['name']) for cat in data_in['categories']]
+    
+    for mode in ['train', 'valid']:
+        input_path = f"{dataset_path}{mode}"
+
+        # adding '/' at the end will give an error for the parent directory
+        output_path = f"{yolo_dataset_path}/{mode}"
+        input_json_train = f"_annotations.coco.json"
+        converter = coco_to_yolo_converter.COCOToYOLOConverter(input_path, output_path, input_json_train, plot_yolo_masks=False)
+        converter.convert()
+        
+        # generate data.yaml
+        yaml_path = os.path.dirname(output_path)+f'/data.yaml'
+
+        if mode =='valid': # train and valid folder successfully created
+            yolo_data = {
+                'names': classes,
+                'nc': len(classes),
+                'train': f'{os.path.join(dir_absolute_path, os.path.dirname(output_path)).replace(".", "").replace("//", "/")}/train/images',
+                'val': f'{os.path.join(dir_absolute_path, os.path.dirname(output_path)).replace(".", "").replace("//", "/")}/valid/images'
+            }
+            
+            # Write the data to a YAML file
+            with open(yaml_path, 'w') as file:
+                yaml.dump(yolo_data, file, default_flow_style=False)
+            
+            print(f"YAML file {yaml_path} created and saved.")
+else:
+    yolo_dataset_path= f"../xami_dataset_YOLO/" # replace with path to YOLO output dataset
+    
 model_checkpoint = 'yolov8n-seg.pt'
 model = YOLO(model_checkpoint) 
-data_yaml_path = f"../../XAMI-dataset/notebooks/mskf_YOLO_{iter}/data.yaml"
+data_yaml_path = yolo_dataset_path+'data.yaml' #f"../../XAMI-dataset/notebooks/mskf_YOLO_{iter}/data.yaml"
 
 with open(data_yaml_path, 'r') as stream:
     num_classes = str(yaml.safe_load(stream)['nc'])

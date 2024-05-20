@@ -1,8 +1,6 @@
 import json
 import os
 import shutil
-
-from sympy import plot
 from dataset import dataset_utils
 import matplotlib.pyplot as plt
 import numpy as np
@@ -103,7 +101,7 @@ class COCOToYOLOConverter:
         count = 0
         for filename in self.file_names:
             img = self.get_img(filename)
-            img_id = img['id']
+            img_id = img['id']          
             img_w = img['width']
             img_h = img['height']
             annotation_path = f"{self.output_path}/labels/{'.'.join(filename.split('.')[:-1])}.txt"
@@ -121,7 +119,7 @@ class COCOToYOLOConverter:
                 segments = []
                 
                 for ann in img_ann:
-                    cls = ann['category_id']-1
+                    cls = ann['category_id']
                     current_category = ann['category_id']
                     flat_points = ann['segmentation'][0]
                     # polygon_points = np.array(flat_points).reshape(-1, 2)

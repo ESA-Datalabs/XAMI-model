@@ -1,10 +1,8 @@
 # In[1]:
 import os
 import sys
-os.environ['CUDA_VISIBLE_DEVICES'] = "0, 1, 2, 3"
-os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = "1"
-
+# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+# os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = "1"
 from datetime import datetime
 import torch
 import numpy as np
@@ -15,23 +13,28 @@ np.set_printoptions(precision=9)
 import albumentations as A
 import matplotlib.pyplot as plt
 
-# seed=0
-# import torch.backends.cudnn as cudnn 
-# # random.seed(seed) 
-# np.random.seed(seed) 
-# torch.manual_seed(seed) 
-# cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False) 
+seed=0
+import torch.backends.cudnn as cudnn 
+np.random.seed(seed) 
+torch.manual_seed(seed) 
+cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False) 
 
 # Append project path when running in CLI
+# Otherwise, the project path is already in the sys.path
+# relative_project_path = os.path.join(sys.path[0], '../')
 relative_project_path = os.path.join(os.path.dirname(__file__), '../')
 sys.path.append(relative_project_path)
 print('Project path:', relative_project_path)
 from dataset import dataset_utils
 from sam_predictor import load_dataset, astro_sam #, residualAttentionBlock
 
-kfold_iter = int(sys.argv[1])
-device_id = int(sys.argv[2])
-
+if len(sys.argv)==3:
+    kfold_iter = int(sys.argv[1])
+    device_id = int(sys.argv[2])
+if len(sys.argv)==1:
+    kfold_iter = 0
+    device_id = 0
+    
 lr=3e-4
 wd=0.0005
 wandb_track=True
@@ -50,6 +53,10 @@ batch_size=4
 
 print("DEVICE", device)
 
+# Load checkpoints
+mobile_sam_dir = '/workspace/raid/OM_DeepLearning/XAMI/mobile_sam' # replace this with the absolute path to the mobile_sam directory
+mobile_sam_checkpoint = "../mobile_sam/weights/mobile_sam.pt"
+
 if not os.path.exists(work_dir):
 	os.makedirs(work_dir)
 else:
@@ -57,7 +64,7 @@ else:
     
 # Dataset split
 
-input_dir = f'../../XAMI-dataset/notebooks/mskf_0/'
+input_dir = f'../xami_dataset/'
 train_dir = input_dir+f'train/'
 valid_dir = input_dir+f'valid/'
 json_train_path, json_valid_path = train_dir+'_annotations.coco.json', valid_dir+'_annotations.coco.json'
@@ -105,11 +112,10 @@ train_data_in['categories']
 # In[12]:
 
 import sys
-sys.path.append('/workspace/raid/OM_DeepLearning/XAMI/mobile_sam')
+sys.path.append(mobile_sam_dir)
 from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
 
 # Segment Anything Model
-mobile_sam_checkpoint = "/workspace/raid/OM_DeepLearning/XAMI/mobile_sam/weights/mobile_sam.pt"
 model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
 model.to(device);
 predictor = SamPredictor(model)

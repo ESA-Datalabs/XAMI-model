@@ -1,6 +1,6 @@
 # XAMI (**X**MM-Newton optical **A**rtefact **M**apping for astronomical **I**nstance segmentation)
 
-The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images are represent observations from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
+The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images represent observations from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
 
 - XMM-OM User's Handbook: https://www.mssl.ucl.ac.uk/www_xmm/ukos/onlines/uhb/XMM_UHB/node1.html.
 - Technical details: https://www.cosmos.esa.int/web/xmm-newton/technical-details-om.
@@ -8,19 +8,16 @@ The code uses images from the XAMI dataset (available on [Github](https://github
 
 ## Cloning the repository
 
-```
+```bash
 git clone https://github.com/ESA-Datalabs/XAMI.git
 cd XAMI
-```
 
-## Creating the environment
-
-```bash
+# creating the environment
 conda env create -f environment.yml
 conda activate xami_env
 ```
 
-## Running the Model Pipeline
+## Model Inference
 
 After cloning the repository and setting up your environment, use the following Python code for model loading and inference (see [yolo_sam_inference.ipynb](https://github.com/ESA-Datalabs/XAMI/blob/main/yolo_sam_inference.ipynb)).
 
@@ -40,10 +37,23 @@ yolo_sam_pipeline = YoloSam(
     model_type='vit_t')
 
 # prediction example
-masks = yolo_sam_pipeline.run_predict('./example_images/S0743200101_V.jpg', yolo_conf=0.2, show_masks=True)
+masks = yolo_sam_pipeline.run_predict(
+    './example_images/S0743200101_V.jpg', 
+    yolo_conf=0.2, 
+    show_masks=True)
 ```
 
 ## Training the model
+
+1. Downloading the dataset archive from [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset/blob/main/xami_dataset.zip).
+
+```bash
+DEST_DIR='.' # destination folder for the dataset (should usually be set to current directory)
+
+huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type dataset --local-dir "$DEST_DIR" && unzip "$DEST_DIR/xami_dataset.zip" -d "$DEST_DIR" && rm "$DEST_DIR/xami_dataset.zip"
+```
+
+2. Training
 
 Check the training [README.md](https://github.com/ESA-Datalabs/XAMI/blob/main/train/README.md).
 
