@@ -1,4 +1,4 @@
-# XAMI (**X**MM-Newton Optical **A**rtefact **M**apping for Astronomical **I**nstance Segmentation)
+# XAMI (**X**MM-Newton optical **A**rtefact **M**apping for astronomical **I**nstance segmentation)
 
 The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images are telescope observation from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
 
