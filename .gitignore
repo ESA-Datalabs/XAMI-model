@@ -2,14 +2,12 @@
 extracted_sources_bboxes_points.json
 yolov8n.pt
 *.pyc
-*.pth
-*.pt
+/train/output_sam/*.pth
+/output_sam/*.pth
+# *.pt
 /xmm_om_images*
-/weight/*
-/weights/*  
 /plots/*
 train/yolov8-segm-*
-*.jpg
 *.pdf
 /wandb/*
 *.log
@@ -76,3 +74,8 @@ mmdet_checkpoints/mask-rcnn_swin-s-p4-w7_fpn_amp-ms-crop-3x_coco.py
 _05_ft_MobileSAM_classif.py
 train/train_sam.ipynb
 yolo_sam_inference-Copy1.ipynb
+train/train_sam-no_scheduler.py
+train/yolov8_sam.py
+yolo_sam_inference.py
+train/yolo_sam_epoch_0.pth
+train/eva_clip_psz14.pt

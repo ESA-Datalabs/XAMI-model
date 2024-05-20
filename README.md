@@ -24,7 +24,6 @@ from inference.YoloSamPipeline import YoloSam
 yolo_checkpoint = './train/yolov8-segm-0/yolov8n-seg/weights/best.pt'
 sam_checkpoint = './output_sam/ft_mobile_sam_final_2024-05-05 18:38:00.526813.pth'
 device_id = 3
-torch.cuda.set_device(device_id)
 
 # the checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
 yolo_sam_pipeline = YoloSam(
