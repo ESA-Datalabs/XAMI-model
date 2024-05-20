@@ -45,7 +45,7 @@ masks = yolo_sam_pipeline.run_predict(
 
 ## Training the model
 
-1. Downloading the dataset archive from [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset/blob/main/xami_dataset.zip).
+1. **Downloading** the dataset archive from [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset/blob/main/xami_dataset.zip).
 
 ```bash
 DEST_DIR='.' # destination folder for the dataset (should usually be set to current directory)
@@ -53,7 +53,7 @@ DEST_DIR='.' # destination folder for the dataset (should usually be set to curr
 huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type dataset --local-dir "$DEST_DIR" && unzip "$DEST_DIR/xami_dataset.zip" -d "$DEST_DIR" && rm "$DEST_DIR/xami_dataset.zip"
 ```
 
-2. Training
+2. **Training**.
 
 Check the training [README.md](https://github.com/ESA-Datalabs/XAMI/blob/main/train/README.md).
 
