@@ -41,41 +41,6 @@ def transform_image(model, transform, image, k, device):
     
     return transformed_data
 
-        # # sets a specific mean for each image
-        # image_T = np.transpose(image, (2, 1, 0))
-        # mean_ = np.mean(image_T[image_T>0])
-        # std_ = np.std(image_T[image_T>0]) 
-        # pixel_mean = torch.as_tensor([mean_, mean_, mean_], dtype=torch.float, device=device)
-        # pixel_std = torch.as_tensor([std_, std_, std_], dtype=torch.float, device=device)
-
-        # model.register_buffer("pixel_mean", torch.Tensor(pixel_mean).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
-        # model.register_buffer("pixel_std", torch.Tensor(pixel_std).unsqueeze(-1).unsqueeze(-1), False) # not in SAM
-
-        # transformed_data = {}
-        # negative_mask = np.where(image > 0, True, False)
-        # negative_mask = torch.from_numpy(negative_mask)  
-        # negative_mask = negative_mask.permute(2, 0, 1)
-        # negative_mask = resize(negative_mask, [1024, 1024], antialias=True) 
-        # negative_mask = negative_mask.unsqueeze(0)
-        # # scales the image to 1024x1024 by longest side 
-        # input_image = transform.apply_image(image)
-        # input_image_torch = torch.as_tensor(input_image, device=device)
-        # transformed_image = input_image_torch.permute(2, 0, 1).contiguous()[None, :, :, :]
-        
-        # # normalization and padding
-        # input_image = model.preprocess(transformed_image)
-        # original_image_size = image.shape[:2]
-        # input_size = tuple(transformed_image.shape[-2:])
-        # input_image[~negative_mask] = 0
-        # transformed_data['image'] = input_image.clone() 
-        # transformed_data['input_size'] = input_size 
-        # transformed_data['image_id'] = k
-        # transformed_data['original_image_size'] = original_image_size
-    
-        # return transformed_data
-
-
-
 def set_mean_and_transform(image, model, transform, device):
     
     input_image = transform_image(model, transform, image, 'dummy_image_id', device)['image']
@@ -90,24 +55,22 @@ def check_requires_grad(model, show=True):
         elif param.requires_grad == False:
             print("❌ Param", name, " doesn't require grad.")
 
-def prints_and_wandb(epoch_sam_loss_train, epoch_sam_loss_val, all_metrics, wandb=None):    
-    train_mAP50 = all_metrics[tuple([0.5])]['train']['map']
-    train_mAP75 = all_metrics[tuple([0.75])]['train']['map']
-    train_mAP50_90 = all_metrics[tuple([0.5, 0.75, 0.9])]['train']['map']
-    valid_mAP50 = all_metrics[tuple([0.5])]['valid']['map']
-    valid_mAP75 = all_metrics[tuple([0.75])]['valid']['map']
-    valid_mAP50_90 = all_metrics[tuple([0.5, 0.75, 0.9])]['valid']['map']
+def prints_and_wandb(epoch, epoch_sam_loss_train, epoch_sam_loss_val, all_metrics, metric_thresholds, wandb=None):  
     
-    print(f"Train loss: {np.round(epoch_sam_loss_train, 4)}")
-    print(f"Validation loss: {np.round(epoch_sam_loss_val, 4)}")
-    print('Train mAP50:', train_mAP50, 'Train mAP75:', train_mAP75, 'Train mAP50-90:', train_mAP50_90)
-    print('Valid mAP50:', valid_mAP50, 'Valid mAP75:', valid_mAP75, 'Valid mAP50-90:', valid_mAP50_90)
+    for metric in metric_thresholds:
+        train_map = np.round(all_metrics[tuple(metric)]['train']['map']*100, 1)
+        valid_map = np.round(all_metrics[tuple(metric)]['valid']['map']*100, 1)
+        print(f"Train mAP{metric}: {train_map}. Valid mAP{metric}: {valid_map}")
+        
+        if wandb is not None:
+            wandb.log({'train/mAP'+str(metric): train_map, 'valid/mAP'+str(metric): valid_map})
+    
+    print(f"Epoch {epoch}. Train loss: {np.round(epoch_sam_loss_train, 7)}")
+    print(f"Epoch {epoch}. Validation loss: {np.round(epoch_sam_loss_val, 7)}")
 
     # Wandb
     if wandb is not None:
-        wandb.log({'train/mAP50': train_mAP50, 'train/mAP75':train_mAP75, 'train/mAP50-90': train_mAP50_90})
-        wandb.log({'valid/mAP50': valid_mAP50, 'valid/mAP75': valid_mAP75, 'valid/mAP50-90': valid_mAP50_90})
-        wandb.log({'train_SAM_loss': np.round(epoch_sam_loss_train, 4), 'valid_SAM_loss': np.round(epoch_sam_loss_val, 4)})
+        wandb.log({'train_SAM_loss': np.round(epoch_sam_loss_train, 7), 'valid_SAM_loss': np.round(epoch_sam_loss_val, 7)})
         
 def print_training_intro(train_dir_list, valid_dir_list, device, metric_thresholds, num_epochs, batch_size, lr, wd, wandb_track, model, optimizer_name):
 

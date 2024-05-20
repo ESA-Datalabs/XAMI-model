@@ -79,3 +79,4 @@ train/yolov8_sam.py
 yolo_sam_inference.py
 train/yolo_sam_epoch_0.pth
 train/eva_clip_psz14.pt
+spring.jpg

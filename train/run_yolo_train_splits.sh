@@ -1,6 +1,6 @@
 #!/bin/bash
 
-skf_iterations=(0 1 2 3)
+skf_iterations=(0)
 
 for iter in "${skf_iterations[@]}"; do
 	log_file="train_detector_${iter}.log"

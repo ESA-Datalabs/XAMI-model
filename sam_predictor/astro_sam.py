@@ -12,6 +12,14 @@ from dataset import dataset_utils
 from sam_predictor import predictor_utils
 from yolo_predictor import yolo_predictor_utils
 
+# ensuring reproducibility
+seed=0
+import torch.backends.cudnn as cudnn 
+# random.seed(seed) 
+np.random.seed(seed) 
+torch.manual_seed(seed) 
+cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False) 
+
 # import sys
 # import warnings
 # import traceback
@@ -474,8 +482,7 @@ class AstroSAM:
 
             for image_name in batch_files:
                 image_path = images_dir + image_name
-                image = cv2.imread(image_path)
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                image = cv2.imread(image_path, cv2.COLOR_BGR2RGB)
                 obj_results = yolov8_pretrained_model.predict(image_path, verbose=False, conf=0.2) 
                 gt_masks = yolo_predictor_utils.get_masks_from_image(images_dir, image_name) 
                 gt_classes = yolo_predictor_utils.get_classes_from_image(images_dir, image_name) 
@@ -515,8 +522,6 @@ class AstroSAM:
                                     multimask_output=True,
                                 )
                         
-                    # self.predictor.reset_image() 
-                    
                     max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256)).to(self.device)
                     max_ious = torch.zeros((iou_predictions.shape[0], 1))
                   
@@ -529,10 +534,6 @@ class AstroSAM:
                     low_res_masks = max_low_res_masks
                     iou_predictions = max_ious
                     pred_masks = self.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
-                    # Apply Gaussian filter on logits
-                    # kernel_size, sigma = 5, 2
-                    # gaussian_kernel = predictor_utils.create_gaussian_kernel(kernel_size, sigma).to(self.device)
-                    # pred_masks = F.conv2d(pred_masks, gaussian_kernel, padding=kernel_size//2)
                     threshold_masks = torch.sigmoid(10 * (pred_masks - self.model.mask_threshold)) # sigmoid with steepness
                     sam_mask_pre = (threshold_masks > 0.5)*1.0
                     sam_mask.append(sam_mask_pre.squeeze(1))
@@ -540,7 +541,7 @@ class AstroSAM:
                     # reshape gt_masks to same shape as predicted masks
                     gt_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in gt_masks], dim=0).to(self.device)
                     yolo_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in yolo_masks], dim=0).to(self.device)
-                    # segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match = loss.segm_loss_match_iou_based(
+                    # segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match, mask_areas = loss_utils.segm_loss_match_iou_based(
                     #     threshold_masks, 
                     #     gt_masks_tensor, 
                     #     obj_results[0].boxes.cls.detach().cpu().numpy(), 
@@ -548,15 +549,12 @@ class AstroSAM:
                     #     iou_predictions,
                     #     mask_areas)
 
-                    segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match  = loss_utils.segm_loss_match_hungarian_compared(
+                    segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match  = loss_utils.segm_loss_match_hungarian(
                         threshold_masks,
-                        yolo_masks_tensor, 
                         gt_masks_tensor, 
                         obj_results[0].boxes.cls.detach().cpu().numpy(), 
                         gt_classes, 
                         iou_predictions,
-                        wt_classes=None,
-                        wt_mask=None,
                         mask_areas=mask_areas)
                     
                     threshold_preds = np.array([preds[i][0]>0.5*1 for i in range(len(preds))])

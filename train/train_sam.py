@@ -15,6 +15,13 @@ np.set_printoptions(precision=9)
 import albumentations as A
 import matplotlib.pyplot as plt
 
+# seed=0
+# import torch.backends.cudnn as cudnn 
+# # random.seed(seed) 
+# np.random.seed(seed) 
+# torch.manual_seed(seed) 
+# cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False) 
+
 # Append project path when running in CLI
 relative_project_path = os.path.join(os.path.dirname(__file__), '../')
 sys.path.append(relative_project_path)
@@ -28,8 +35,9 @@ device_id = int(sys.argv[2])
 lr=3e-4
 wd=0.0005
 wandb_track=True
-num_epochs=50
+num_epochs=60
 use_lr_warmup=True
+n_epochs_stop = 15 # Early stopping
 work_dir = './output_sam'
 # torch.cuda.set_device(device_id)
 device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
@@ -49,7 +57,7 @@ else:
     
 # Dataset split
 
-input_dir = f'../../XAMI-dataset/xami_dataset/'
+input_dir = f'../../XAMI-dataset/notebooks/mskf_0/'
 train_dir = input_dir+f'train/'
 valid_dir = input_dir+f'valid/'
 json_train_path, json_valid_path = train_dir+'_annotations.coco.json', valid_dir+'_annotations.coco.json'
@@ -169,7 +177,6 @@ print(f"🚀  The SAM model has {sum(p.numel() for p in astrosam_model.model.par
 train_losses = []
 valid_losses = []
 best_valid_loss = float('inf')
-n_epochs_stop = 20 #5+num_epochs/10
 
 # # Augmentations
 # geometrical_augmentations = A.Compose([
@@ -264,9 +271,9 @@ for epoch in range(num_epochs):
             print("Early stopping initiated.")
             early_stop = True
             break
-			
-    if epoch % 10 == 0:
-        torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_e{epoch}_{datetime.now()}_best.pth')
+    
+    print(f"Best epoch: {best_epoch}. Best validation loss: {best_valid_loss}.\n")
+    torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_best.pth')
                 
 torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_best.pth')
 torch.save(astrosam_model.model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_last.pth')
