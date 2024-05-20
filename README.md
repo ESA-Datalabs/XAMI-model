@@ -1,6 +1,6 @@
 # XAMI (**X**MM-Newton optical **A**rtefact **M**apping for astronomical **I**nstance segmentation)
 
-The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images are telescope observation from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
+The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images are represent observations from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
 
 - XMM-OM User's Handbook: https://www.mssl.ucl.ac.uk/www_xmm/ukos/onlines/uhb/XMM_UHB/node1.html.
 - Technical details: https://www.cosmos.esa.int/web/xmm-newton/technical-details-om.
@@ -22,7 +22,7 @@ conda activate xami_env
 
 ## Running the Model Pipeline
 
-After cloning the repository and setting up your environment, use the following Python code for model loading and inference.
+After cloning the repository and setting up your environment, use the following Python code for model loading and inference (see [yolo_sam_inference.ipynb](https://github.com/ESA-Datalabs/XAMI/blob/main/yolo_sam_inference.ipynb)).
 
 ```python
 import sys
