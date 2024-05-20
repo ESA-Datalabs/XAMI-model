@@ -80,3 +80,5 @@ yolo_sam_inference.py
 train/yolo_sam_epoch_0.pth
 train/eva_clip_psz14.pt
 spring.jpg
+xami_dataset/*
+xami_dataset_YOLO/*

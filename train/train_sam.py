@@ -1,8 +1,10 @@
 # In[1]:
 import os
 import sys
-# os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-# os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = "1"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0, 1, 2, 3" # replace with the GPU IDs that are available
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = "1"
+
 from datetime import datetime
 import torch
 import numpy as np
