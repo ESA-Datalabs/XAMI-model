@@ -5,6 +5,7 @@ from dataset import dataset_utils
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+import yaml
 
 class COCOToYOLOConverter:
     def __init__(self, input_path, output_path, annotations_file, plot_yolo_masks=False):
@@ -227,3 +228,35 @@ class COCOToYOLOConverter:
                         nidx = abs(idx[1] - idx[0])
                         s.append(segments[i][nidx:])
         return s
+    
+def convert_coco_to_yolo(dir_absolute_path, dataset_path, yolo_dataset_path, convert=True):
+    if not convert:
+        return
+
+    json_file_path = os.path.join(dataset_path, 'train', '_annotations.coco.json')
+
+    with open(json_file_path) as f:
+        data_in = json.load(f)
+
+    classes = [str(cat['name']) for cat in data_in['categories']]
+
+    for mode in ['train', 'valid']:
+        input_path = os.path.join(dataset_path, mode)
+        output_path = os.path.join(yolo_dataset_path, mode)
+        input_json_train = '_annotations.coco.json'
+        converter = COCOToYOLOConverter(input_path, output_path, input_json_train, plot_yolo_masks=False)
+        converter.convert()
+
+        if mode == 'valid':  # train and valid folders successfully created
+            yaml_path = os.path.join(os.path.dirname(output_path), 'data.yaml')
+            yolo_data = {
+                'names': classes,
+                'nc': len(classes),
+                'train': os.path.join(dir_absolute_path, os.path.dirname(output_path).replace(".", "").replace("//", "/"), 'train/images'),
+                'val': os.path.join(dir_absolute_path, os.path.dirname(output_path).replace(".", "").replace("//", "/"), 'valid/images')
+            }
+
+            with open(yaml_path, 'w') as file:
+                yaml.dump(yolo_data, file, default_flow_style=False)
+
+            print(f"YAML file {yaml_path} created and saved.")
