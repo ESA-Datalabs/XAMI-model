@@ -19,4 +19,4 @@ Check [run_sam_train_splits.sh](https://github.com/ESA-Datalabs/XAMI/blob/main/t
 
 ### Train YOLOv8 and SAM together
 
-Check [train_yolo_sam.ipynb](https://github.com/ESA-Datalabs/XAMI/blob/main/train/train_yolo_sam.ipynb) for how to couple the models to train SAM layers with predicted YOLO bounding boxes and compute metrics. 
+See [train_yolo_sam.ipynb](https://github.com/ESA-Datalabs/XAMI/blob/main/train/train_yolo_sam.ipynb) for how to couple the models to train SAM layers with predicted YOLO bounding boxes and compute metrics. 
