@@ -1,12 +1,8 @@
-from ultralytics import YOLO
-from matplotlib import pyplot as plt
-from PIL import Image
+from ultralytics import YOLO, RTDETR
 import yaml
-from ultralytics import RTDETR
 import sys
 import json
 import os
-
 
 # Append project path when running in CLI
 # Otherwise, the project path is already in the sys.path
@@ -24,9 +20,10 @@ else:
     print("Usage: python train_detector.py [iter]")
     sys.exit(1)
 
+yolo_dataset_path = f"../data/xami_dataset_YOLO/" # # replace with path to YOLO output dataset
+ 
 #  Convert the dataset form COCO IS format into YOLOv8
-
-convert = True
+convert = False
 
 if convert:
     dir_absolute_path = '/workspace/raid/test/XAMI/'
@@ -34,7 +31,6 @@ if convert:
     json_file_path = dataset_path+'train/'+'_annotations.coco.json' # need only training example
     # YOLO yaml files works with absolute paths. Replace this with the actual absolute path to the dataset.
     dataset_absolute_path = dir_absolute_path+'xami_dataset/'
-    yolo_dataset_path = f"../xami_dataset_YOLO/" # path to YOLO output dataset
     
     with open(json_file_path) as f:
         data_in = json.load(f)
@@ -66,9 +62,7 @@ if convert:
                 yaml.dump(yolo_data, file, default_flow_style=False)
             
             print(f"YAML file {yaml_path} created and saved.")
-else:
-    yolo_dataset_path= f"../xami_dataset_YOLO/" # replace with path to YOLO output dataset
-    
+
 model_checkpoint = 'yolov8n-seg.pt'
 model = YOLO(model_checkpoint) 
 data_yaml_path = yolo_dataset_path+'data.yaml' #f"../../XAMI-dataset/notebooks/mskf_YOLO_{iter}/data.yaml"

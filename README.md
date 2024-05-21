@@ -1,4 +1,4 @@
-# XAMI (**X**MM-Newton optical **A**rtefact **M**apping for astronomical **I**nstance segmentation)
+# XAMI (XMM-Newton optical Artefact Mapping for astronomical Instance segmentation)
 
 The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images represent observations from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
 
@@ -16,6 +16,18 @@ cd XAMI
 conda env create -f environment.yml
 conda activate xami_env
 ```
+
+## Downloading the dataset and model checkpoints from HuggingFace🤗
+
+See [download_dataset_and_weights.ipynb](https://github.com/ESA-Datalabs/XAMI/blob/main/download_dataset_and_weights.ipynb) for how to download the dataset and weights. 
+
+<!-- 1. **Downloading** the dataset archive from [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset/blob/main/xami_dataset.zip).
+
+```bash
+DEST_DIR='.' # destination folder for the dataset (should usually be set to current directory)
+
+huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type dataset --local-dir "$DEST_DIR" && unzip "$DEST_DIR/xami_dataset.zip" -d "$DEST_DIR" && rm "$DEST_DIR/xami_dataset.zip"
+``` -->
 
 ## Model Inference
 
@@ -44,16 +56,6 @@ masks = yolo_sam_pipeline.run_predict(
 ```
 
 ## Training the model
-
-1. **Downloading** the dataset archive from [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset/blob/main/xami_dataset.zip).
-
-```bash
-DEST_DIR='.' # destination folder for the dataset (should usually be set to current directory)
-
-huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type dataset --local-dir "$DEST_DIR" && unzip "$DEST_DIR/xami_dataset.zip" -d "$DEST_DIR" && rm "$DEST_DIR/xami_dataset.zip"
-```
-
-2. **Training**.
 
 Check the training [README.md](https://github.com/ESA-Datalabs/XAMI/blob/main/train/README.md).
 

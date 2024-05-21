@@ -63,7 +63,7 @@ def prints_and_wandb(epoch, epoch_sam_loss_train, epoch_sam_loss_val, all_metric
         print(f"Train mAP{metric}: {train_map}. Valid mAP{metric}: {valid_map}")
         
         if wandb is not None:
-            wandb.log({'train/mAP'+str(metric): train_map, 'valid/mAP'+str(metric): valid_map})
+            wandb.log({'train/mAP'+str(metric): train_map/100, 'valid/mAP'+str(metric): valid_map/100})
     
     print(f"Epoch {epoch}. Train loss: {np.round(epoch_sam_loss_train, 7)}")
     print(f"Epoch {epoch}. Validation loss: {np.round(epoch_sam_loss_val, 7)}")
