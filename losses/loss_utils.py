@@ -4,6 +4,8 @@ from scipy.optimize import linear_sum_assignment
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
+from dataset import dataset_utils
+from sam_predictor import predictor_utils
 
 def iou_single(pred_mask, gt_mask):
     """Compute IoU between a single predicted mask and a single ground truth mask."""
@@ -72,18 +74,23 @@ def compute_dice_loss(pred_mask, gt_mask):
     return 1 - dice_coefficient
 
 def segm_loss_match_hungarian(
+    use_yolo_masks,
 	pred_masks,
 	gt_masks, 
 	all_pred_classes, 
 	all_gt_classes, 
 	iou_scores,
-    mask_areas=None):
+    mask_areas=None,
+    image=None,
+    yolo_masks=None,
+    wt_classes=None,
+    wt_threshold=None):
 
     # Compute IoU matrix for all pairs
     iou_matrix = compute_iou_matrix(pred_masks, gt_masks)  
     preds = []
     gts = []
-    gt_classes, pred_classes, iou_scores_sam = [], [], []
+    gt_classes, pred_classes, iou_scores_sam, combined_preds = [], [], [], []
     # Hungarian matching
     cost_matrix = -iou_matrix  # Negate IoU for minimization
     row_ind, col_ind = linear_sum_assignment(cost_matrix.detach().numpy())
@@ -96,24 +103,39 @@ def segm_loss_match_hungarian(
         
         dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
         focal_loss = compute_focal_loss(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
-        good_mask = pred_masks[pred_idx]
-        preds.append(good_mask.detach().cpu().numpy())
+        preds.append(pred_masks[pred_idx].detach().cpu().numpy())
         gts.append(gt_masks[gt_idx].detach().cpu().numpy())
         pred_classes.append(int(all_pred_classes[pred_idx]))
         gt_classes.append(all_gt_classes[gt_idx])
         iou_scores_sam.append(iou_scores[pred_idx].detach().cpu().numpy())
             
-        if mask_areas is not None:
-            total_dice_loss += dice_loss #(dice_loss * mask_areas[gt_idx]/sum(mask_areas)) # weighted loss given mask size
-            total_focal_loss += focal_loss #(focal_loss * mask_areas[gt_idx]/sum(mask_areas)) # weighted loss given mask size
-
+        # if mask_areas is not None:
+        #     dice_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
+        #     focal_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
+            
+        if use_yolo_masks:
+            if yolo_masks is not None and wt_threshold is not None and wt_classes is not None and image is not None:
+                combined_preds.append(predictor_utils.process_faint_masks(
+                    image, 
+                    [pred_masks[pred_idx]], 
+                    [yolo_masks[pred_idx]], 
+                    [all_pred_classes[pred_idx]], 
+                    pred_masks.device,
+                    )[0].detach().cpu().numpy())
+            
+        total_dice_loss += dice_loss
+        total_focal_loss += focal_loss
+            
     # Normalize the losses
     mean_dice_loss = total_dice_loss / len(row_ind)
     mean_focal_loss = total_focal_loss / len(row_ind)
     # Combine losses
     total_loss = mean_dice_loss + 20 * mean_focal_loss
 
-    return total_loss, preds, gts, gt_classes, pred_classes, iou_scores_sam 
+    if len(combined_preds) > 0:
+        preds = combined_preds
+                        
+    return total_loss, preds, gts, gt_classes, pred_classes, iou_scores_sam
 
 def segm_loss_match_iou_based(
 	pred_masks, 

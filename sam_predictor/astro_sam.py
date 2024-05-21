@@ -1,3 +1,4 @@
+from pyparsing import with_class
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -34,12 +35,23 @@ cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, Fa
 # torch.autograd.set_detect_anomaly(True)
 
 class AstroSAM:
-    def __init__(self, model, device, predictor, residualAttentionBlock=None):
+    def __init__(
+        self,  
+        model, 
+        device, 
+        predictor, 
+        use_yolo_masks,
+        wt_threshold=None,
+        wt_classes_ids=None, 
+        residualAttentionBlock=None):
         self.model = model
         self.device = device
         self.predictor = predictor
         self.transform = ResizeLongestSide(self.model.image_encoder.img_size)
         self.residualAttentionBlock = residualAttentionBlock  
+        self.use_yolo_masks = use_yolo_masks # whether to output YOLO masks for faint sources
+        self.wt_threshold = wt_threshold # threshold for wavelet transform
+        self.wt_classes_ids = wt_classes_ids # which classes to apply wavelet transform on given a threshold
         
     def one_image_predict(
         self,
@@ -486,7 +498,7 @@ class AstroSAM:
                 obj_results = yolov8_pretrained_model.predict(image_path, verbose=False, conf=0.2) 
                 gt_masks = yolo_predictor_utils.get_masks_from_image(images_dir, image_name) 
                 gt_classes = yolo_predictor_utils.get_classes_from_image(images_dir, image_name) 
-
+                
                 if len(obj_results[0]) == 0 or len(gt_masks) == 0:
                     del obj_results
                     continue
@@ -540,7 +552,7 @@ class AstroSAM:
 
                     # reshape gt_masks to same shape as predicted masks
                     gt_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in gt_masks], dim=0).to(self.device)
-                    yolo_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in yolo_masks], dim=0).to(self.device)
+                    # yolo_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in yolo_masks], dim=0).to(self.device)
                     # segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match, mask_areas = loss_utils.segm_loss_match_iou_based(
                     #     threshold_masks, 
                     #     gt_masks_tensor, 
@@ -550,12 +562,17 @@ class AstroSAM:
                     #     mask_areas)
 
                     segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match  = loss_utils.segm_loss_match_hungarian(
+                        self.use_yolo_masks,
                         threshold_masks,
                         gt_masks_tensor, 
                         obj_results[0].boxes.cls.detach().cpu().numpy(), 
                         gt_classes, 
                         iou_predictions,
-                        mask_areas=mask_areas)
+                        mask_areas,
+                        image,
+                        yolo_masks,
+                        self.wt_classes_ids,
+                        self.wt_threshold)
                     
                     threshold_preds = np.array([preds[i][0]>0.5*1 for i in range(len(preds))])
                     all_preds.append(threshold_preds)
@@ -568,7 +585,7 @@ class AstroSAM:
                     
                     batch_losses_sam.append(segm_loss_sam)
                     del sparse_embeddings, dense_embeddings, low_res_masks, max_low_res_masks, gt_masks, 
-                    del yolo_masks_tensor, segm_loss_sam, threshold_masks, pred_masks, sam_mask_pre
+                    del segm_loss_sam, threshold_masks, pred_masks, sam_mask_pre
                     torch.cuda.empty_cache()
 
                     # if phase == 'val':

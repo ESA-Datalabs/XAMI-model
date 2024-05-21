@@ -15,11 +15,12 @@ np.set_printoptions(precision=9)
 import albumentations as A
 import matplotlib.pyplot as plt
 
+# to help with reproducibility
 seed=0
 import torch.backends.cudnn as cudnn 
 np.random.seed(seed) 
 torch.manual_seed(seed) 
-cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False) 
+cudnn.benchmark, cudnn.deterministic = False, True
 
 # Append project path when running in CLI
 # Otherwise, the project path is already in the sys.path

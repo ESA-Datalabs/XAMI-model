@@ -18,7 +18,7 @@ sys.path.append('/workspace/raid/OM_DeepLearning/XAMI/mobile_sam')
 from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
 
 class YoloSam:
-  def __init__(self, device, yolo_checkpoint, sam_checkpoint, model_type='vit_t'):
+  def __init__(self, device, yolo_checkpoint, sam_checkpoint, model_type='vit_t', use_yolo_masks=True):
     print("Initializing the model...")
 
     self.device = device
@@ -30,7 +30,7 @@ class YoloSam:
                     3:('smoke-ring', (159,21,100)),
                     4:('star-loop', (255, 188, 248))}
 
-    self.use_yolo_masks = True # whether to use YOLO masks for faint sources
+    self.use_yolo_masks = use_yolo_masks # whether to use YOLO masks for faint sources
 
     # Step 1: Object detection with YOLO
     if 'detr' in yolo_checkpoint:
@@ -113,17 +113,8 @@ class YoloSam:
     low_res_masks=self.sam_predictor.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
     
     if self.use_yolo_masks:
-      wt_mask, wt_image = dataset_utils.isolate_background(image[:, :, 0], decomposition='db1', level=2, sigma=1)
-      wt_mask = torch.from_numpy(wt_mask).to(self.device)  # Ensure wavelet mask is on GPU
+      low_res_masks = predictor_utils.process_faint_masks(image, low_res_masks, yolo_masks, predicted_classes, self.device)
 
-      for i, low_res_mask in enumerate(low_res_masks):
-          thresholded_mask = (low_res_mask > 0.5).to(torch.float32)
-          sum_thresholded_mask = torch.clamp(thresholded_mask.sum(), min=1)  # Avoid division by zero
-          wt_on_mask = wt_mask * thresholded_mask / sum_thresholded_mask
-          wt_count = wt_on_mask.sum()
-          if wt_count > 0.6 and predicted_classes[i] in [1.0, 2.0, 4.0]:
-            low_res_masks[i] = torch.from_numpy(yolo_masks[i]).float().to(self.device).unsqueeze(0)
-          
     # Apply Gaussian filter on logits
     kernel_size, sigma = 5, 2
     gaussian_kernel = predictor_utils.create_gaussian_kernel(kernel_size, sigma).to(self.device)

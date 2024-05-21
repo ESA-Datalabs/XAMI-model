@@ -487,3 +487,16 @@ def MobileSAM_predict(image_path: str,
 
     return image, model_result
 
+def process_faint_masks(image, low_res_masks, yolo_masks, predicted_classes, device, wt_threshold=0.6, wt_classes=[1.0, 4.0]):
+    wt_mask, _ = dataset_utils.isolate_background(image[:, :, 0], decomposition='db1', level=2, sigma=1)
+    wt_mask = torch.from_numpy(wt_mask).to(device)  # Ensure wavelet mask is on GPU
+
+    for i, low_res_mask in enumerate(low_res_masks):
+        thresholded_mask = (low_res_mask > 0.5).to(torch.float32)
+        sum_thresholded_mask = torch.clamp(thresholded_mask.sum(), min=1)  # Avoid division by zero
+        wt_on_mask = wt_mask * thresholded_mask / sum_thresholded_mask
+        wt_count = wt_on_mask.sum()
+        if wt_count > wt_threshold and predicted_classes[i] in wt_classes:
+            low_res_masks[i] = torch.from_numpy(yolo_masks[i]).float().to(device).unsqueeze(0)
+            
+    return low_res_masks
