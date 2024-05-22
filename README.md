@@ -13,8 +13,8 @@ git clone https://github.com/ESA-Datalabs/XAMI.git
 cd XAMI
 
 # creating the environment
-conda env create -f environment.yml
-conda activate xami_env
+conda env create -f environment.yaml
+conda activate xami_model_env
 ```
 
 ## Downloading the dataset and model checkpoints from HuggingFace🤗
