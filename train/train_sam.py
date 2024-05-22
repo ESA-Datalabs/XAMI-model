@@ -57,8 +57,8 @@ batch_size=4
 print("DEVICE", device)
 
 # Load checkpoints
-mobile_sam_dir = '/workspace/raid/OM_DeepLearning/XAMI/mobile_sam' # replace this with the absolute path to the mobile_sam directory
-mobile_sam_checkpoint = "../mobile_sam/weights/mobile_sam.pt"
+mobile_sam_dir = os.getcwd()+'/../mobile_sam/'
+mobile_sam_checkpoint = mobile_sam_dir+"weights/mobile_sam.pt"
 
 if not os.path.exists(work_dir):
 	os.makedirs(work_dir)

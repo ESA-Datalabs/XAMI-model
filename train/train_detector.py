@@ -26,7 +26,7 @@ yolo_dataset_path = f"../data/xami_dataset_YOLO/" # # replace with path to YOLO 
 convert = False
 
 if convert:
-    dir_absolute_path = '/workspace/raid/test/XAMI/'
+    dir_absolute_path = relative_project_path
     dataset_path = '../xami_dataset/' 
     json_file_path = dataset_path+'train/'+'_annotations.coco.json' # need only training example
     # YOLO yaml files works with absolute paths. Replace this with the actual absolute path to the dataset.
