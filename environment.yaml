@@ -11,7 +11,7 @@ dependencies:
   - astropy=6.0.0
   - Pillow=10.3.0
   - tqdm=4.66.1
-  - pip=24.0
+  - pip
   - jedi-language-server
   - nodejs=18
   - pip:
