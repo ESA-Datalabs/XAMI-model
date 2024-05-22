@@ -1,7 +1,4 @@
-import copy
 import sys
-from tabnanny import verbose
-from tracemalloc import start
 import torch
 import cv2
 import numpy as np
