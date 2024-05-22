@@ -40,7 +40,7 @@ class AstroSAM:
         model, 
         device, 
         predictor, 
-        use_yolo_masks,
+        use_yolo_masks=None,
         wt_threshold=None,
         wt_classes_ids=None, 
         residualAttentionBlock=None):
@@ -199,7 +199,7 @@ class AstroSAM:
         #     axs[2].imshow(input_image) 
         #     dataset_utils.show_masks(threshold_masks.permute(1, 0, 2, 3)[0].detach().cpu().numpy(), axs[2], random_color=False)
         #     axs[2].set_title('Pred masks', fontsize=40)
-        #     plt.savefig(f'/workspace/raid/OM_DeepLearning/XMM_OM_code_git/{k.split(".")[0]}_masks.png')
+        #     plt.savefig(f'./{k.split(".")[0]}_masks.png')
         #     plt.show()
         #     plt.close()
             
