@@ -57,7 +57,7 @@ batch_size=4
 print("DEVICE", device)
 
 # Load checkpoints
-mobile_sam_dir = os.getcwd()+'/../mobile_sam/'
+mobile_sam_dir = os.path.join(os.getcwd(), '..', 'mobile_sam')
 mobile_sam_checkpoint = mobile_sam_dir+"weights/mobile_sam.pt"
 
 if not os.path.exists(work_dir):

@@ -11,7 +11,8 @@ from segment_anything.utils.transforms import ResizeLongestSide
 import tqdm
 import os
 
-sys.path.append(os.getcwd()+'/mobile_sam')
+sys.path.append(os.path.join(os.getcwd(), 'mobile_sam'))
+print(os.path.join(os.getcwd(), 'mobile_sam'))
 from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
 
 class YoloSam:
