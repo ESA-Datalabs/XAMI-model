@@ -1,5 +1,4 @@
 from torch import tensor
-from torchmetrics.detection import MeanAveragePrecision
 from pprint import pprint
 import torch
 import numpy as np

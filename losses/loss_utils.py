@@ -132,7 +132,7 @@ def segm_loss_match_hungarian(
     # Combine losses
     total_loss = mean_dice_loss + 20 * mean_focal_loss
 
-    if len(combined_preds) > 0:
+    if use_yolo_masks:
         preds = combined_preds
                         
     return total_loss, preds, gts, gt_classes, pred_classes, iou_scores_sam

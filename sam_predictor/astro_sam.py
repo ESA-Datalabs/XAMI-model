@@ -552,7 +552,6 @@ class AstroSAM:
 
                     # reshape gt_masks to same shape as predicted masks
                     gt_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in gt_masks], dim=0).to(self.device)
-                    # yolo_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in yolo_masks], dim=0).to(self.device)
                     # segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match, mask_areas = loss_utils.segm_loss_match_iou_based(
                     #     threshold_masks, 
                     #     gt_masks_tensor, 
@@ -589,6 +588,7 @@ class AstroSAM:
                     torch.cuda.empty_cache()
 
                     # if phase == 'val':
+                    #     print(image_name)
                     #     fig, axes = plt.subplots(1, 4, figsize=(18, 6)) 
                         
                     #     # Plot 1: GT Masks
@@ -612,7 +612,6 @@ class AstroSAM:
                     #     axes[2].set_title('YOLOv8n predicted Bboxes')
                         
                     #     # Plot 4: SAM Masks
-                    #     sam_masks_numpy = sam_mask[0].detach().cpu().numpy()
                     #     axes[3].imshow(image)
                     #     dataset_utils.show_masks(threshold_preds, axes[3], random_color=True)
                     #     axes[3].set_title('MobileSAM predicted masks')
