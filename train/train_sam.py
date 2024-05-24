@@ -1,7 +1,7 @@
 # In[1]:
 import os
 import sys
-# os.environ['CUDA_VISIBLE_DEVICES'] = "0, 1, 2, 3" # replace with the GPU IDs that are available
+os.environ['CUDA_VISIBLE_DEVICES'] = "0, 1, 2, 3" # replace with the GPU IDs that are available
 # os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
 # os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = "1"
 
@@ -22,12 +22,7 @@ np.random.seed(seed)
 torch.manual_seed(seed) 
 cudnn.benchmark, cudnn.deterministic = False, True
 
-# Append project path when running in CLI
-# Otherwise, the project path is already in the sys.path
-# relative_project_path = os.path.join(sys.path[0], '../')
-relative_project_path = os.path.join(os.path.dirname(__file__), '../')
-sys.path.append(relative_project_path)
-print('Project path:', relative_project_path)
+sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 from dataset import dataset_utils
 from sam_predictor import load_dataset, astro_sam #, residualAttentionBlock
 
@@ -58,7 +53,7 @@ print("DEVICE", device)
 
 # Load checkpoints
 mobile_sam_dir = os.path.join(os.getcwd(), '..', 'mobile_sam')
-mobile_sam_checkpoint = mobile_sam_dir+"weights/mobile_sam.pt"
+mobile_sam_checkpoint = os.path.join(mobile_sam_dir,"weights/mobile_sam.pt")
 
 if not os.path.exists(work_dir):
 	os.makedirs(work_dir)

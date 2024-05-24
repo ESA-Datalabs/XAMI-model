@@ -100,19 +100,29 @@ def segm_loss_match_hungarian(
     total_focal_loss = 0
     
     for pred_idx, gt_idx in zip(row_ind, col_ind):
-        
-        dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
-        focal_loss = compute_focal_loss(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
-        preds.append(pred_masks[pred_idx].detach().cpu().numpy())
-        gts.append(gt_masks[gt_idx].detach().cpu().numpy())
-        pred_classes.append(int(all_pred_classes[pred_idx]))
-        gt_classes.append(all_gt_classes[gt_idx])
-        iou_scores_sam.append(iou_scores[pred_idx].detach().cpu().numpy())
+        if torch.sum(gt_masks) > 0:
+            dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
+            focal_loss = compute_focal_loss(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
+            preds.append(pred_masks[pred_idx].detach().cpu().numpy())
+            gts.append(gt_masks[gt_idx].detach().cpu().numpy())
+            pred_classes.append(int(all_pred_classes[pred_idx]))
+            gt_classes.append(all_gt_classes[gt_idx])
+            iou_scores_sam.append(iou_scores[pred_idx].detach().cpu().numpy())
             
-        # if mask_areas is not None:
-        #     dice_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
-        #     focal_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
-            
+            # if mask_areas is not None:
+            #     dice_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
+            #     focal_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
+                
+        else: # False Positives
+            empty_mask = torch.zeros_like(pred_masks[pred_idx])
+            dice_loss = 1.0 
+            focal_loss = 1.0 
+            preds.append(pred_masks[pred_idx].detach().cpu().numpy())
+            gts.append(empty_mask.detach().cpu().numpy())
+            pred_classes.append(int(all_pred_classes[pred_idx]))
+            gt_classes.append(-1)
+            iou_scores_sam.append(iou_scores[pred_idx].detach().cpu().numpy())
+
         if use_yolo_masks:
             if yolo_masks is not None and wt_threshold is not None and wt_classes is not None and image is not None:
                 combined_preds.append(predictor_utils.process_faint_masks(
@@ -189,28 +199,7 @@ def dice_loss_per_mask_pair(pred, target, mask_areas, negative_mask=None):
     for i in range(batch_size):
         pred_mask = pred[i].contiguous()
         target_mask = target[i].contiguous()
-        # if negative_mask is not None:
-        #     neg_mask = negative_mask[i].bool()
-        #     pred_mask = pred_mask * neg_mask
-        #     target_mask = target_mask * neg_mask
-        
         dice_loss += (compute_dice_loss(pred_mask, target_mask) * mask_areas[i]/total_masks_area) # weighted loss given mask size
-        # fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-    
-        # # Assuming masks are 2D tensors, convert them to numpy for plotting
-        # pred_mask_np = pred_mask.detach().cpu().numpy() if pred_mask.is_cuda else pred_mask.numpy()
-        # target_mask_np = target_mask.detach().cpu().numpy() if target_mask.is_cuda else target_mask.numpy()
-        
-        # ax[0].imshow(pred_mask_np)
-        # ax[0].set_title(f'Predicted Mask\n dice_loss: {((1 - mask_loss) * mask_areas[i] / total_masks_area):.4f}')
-        # ax[0].axis('off')
-        
-        # ax[1].imshow(target_mask_np)
-        # ax[1].set_title('Target Mask')
-        # ax[1].axis('off')
-        
-        # plt.tight_layout()
-        # plt.show()
         
     return dice_loss/batch_size
 

@@ -3,7 +3,7 @@
 # This script is designed to run a Python training script, `train_sam.py`, across multiple GPUs.
 
 skf_iterations=(0)  # List of iteration indices
-device_ids=(0 1 2 3)      # List of GPU device IDs (assumes 4 GPUs)
+device_ids=(0)      # List of GPU device IDs (assumes 4 GPUs)
 
 gpu=0  # Initial GPU ID
 

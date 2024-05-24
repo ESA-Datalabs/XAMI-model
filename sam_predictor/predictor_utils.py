@@ -10,6 +10,7 @@ import torch.nn as nn
 from dataset import dataset_utils
 import numpy as np
 from scipy.optimize import linear_sum_assignment
+from losses import loss_utils
 
 def transform_image(model, transform, image, k, device):
     
@@ -500,3 +501,27 @@ def process_faint_masks(image, pred_masks, yolo_masks, predicted_classes, device
             pred_masks[i] = torch.from_numpy(yolo_masks[i]).float().to(device).unsqueeze(0)
             
     return pred_masks
+
+def calculate_iou_loss(threshold_masks, gt_threshold_masks, iou_predictions, mask_areas):
+    """
+    Calculate IoU per mask and the corresponding image loss.
+
+    Args:
+    - threshold_masks (torch.Tensor): The predicted threshold masks.
+    - gt_threshold_masks (torch.Tensor): The ground truth threshold masks.
+    - iou_predictions (torch.Tensor): The predicted IoU values.
+    - mask_areas (torch.Tensor): The areas of each mask.
+
+    Returns:
+    - ious (list): A list of IoU values per mask.
+    - iou_image_loss (list): A list of IoU image losses per mask.
+    """
+    ious = []
+    iou_image_loss = []
+    total_mask_areas = np.array(mask_areas).sum()
+    for i in range(threshold_masks.shape[0]):
+        iou_per_mask = loss_utils.iou_single(threshold_masks[i][0], gt_threshold_masks[i])
+        ious.append(iou_per_mask)
+        iou_image_loss.append((torch.abs(iou_predictions.permute(1, 0)[0][i] - iou_per_mask)) * mask_areas[i] / total_mask_areas)
+    
+    return ious, torch.stack(iou_image_loss)

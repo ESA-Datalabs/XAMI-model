@@ -66,7 +66,6 @@ class AstroSAM:
         cr_transforms=None, 
         show_plot=True):
 
-        ious = []
         image_loss=[]
         boxes = []
         gt_rle_to_masks, mask_areas = [], []
@@ -95,9 +94,9 @@ class AstroSAM:
         del box_torch
         torch.cuda.empty_cache()
         
-        if torch.isnan(image_embedding).any(): # !!!!!!!!!!!!!
+        if torch.isnan(image_embedding).any(): 
             print('NAN in image_embedding')
-            return 0.5 # image loss for now
+            return None
         
         low_res_masks, iou_predictions = self.model.mask_decoder( # iou_pred [N, 1] where N - number of masks
         image_embeddings=image_embedding,
@@ -118,22 +117,12 @@ class AstroSAM:
             
         low_res_masks = max_low_res_masks
         iou_predictions = max_ious
-        iou_image_loss = []
         pred_masks = self.model.postprocess_masks(low_res_masks, input_size, original_image_size).to(self.device)
-        # Apply Gaussian filter on logits
-        # kernel_size, sigma = 5, 2
-        # gaussian_kernel = predictor_utils.create_gaussian_kernel(kernel_size, sigma).to(self.device)
-        # pred_masks = F.conv2d(pred_masks, gaussian_kernel, padding=kernel_size//2)
         threshold_masks = torch.sigmoid(10 * (pred_masks - self.model.mask_threshold)) # sigmoid with steepness
         gt_threshold_masks = torch.as_tensor(gt_rle_to_masks, dtype=torch.float32) 
         numpy_gt_threshold_mask = gt_threshold_masks.contiguous().detach().cpu().numpy()
-        total_mask_areas = np.array(mask_areas).sum()
-
-        for i in range(threshold_masks.shape[0]):
-            iou_per_mask = loss_utils.iou_single(threshold_masks[i][0], gt_threshold_masks[i])
-            ious.append(iou_per_mask)
-            iou_image_loss.append((torch.abs(iou_predictions.permute(1, 0)[0][i] - iou_per_mask)) * mask_areas[i]/total_mask_areas)
-
+        ious, iou_image_loss = predictor_utils.calculate_iou_loss(threshold_masks, gt_threshold_masks, iou_predictions, mask_areas)
+        
         # compute weighted dice loss (smaller weights on smaller objects)
         focal = loss_utils.focal_loss_per_mask_pair(torch.squeeze(pred_masks, dim=1), gt_threshold_masks, mask_areas)
         dice = loss_utils.dice_loss_per_mask_pair(torch.squeeze(threshold_masks, dim=1), gt_threshold_masks, mask_areas) 
@@ -166,7 +155,6 @@ class AstroSAM:
                     self.device))
 
         image_loss = torch.stack(image_loss)
-        iou_image_loss = torch.stack(iou_image_loss)
         image_loss = torch.mean(image_loss) + torch.mean(iou_image_loss) #* loss_scaling_factor
         if len(transformed_losses)>0:
             for i in range(len(transformed_losses)):
@@ -222,7 +210,6 @@ class AstroSAM:
             show_plot=True):
         
             boxes = []
-            ious = []
             image_loss=[]
             mask_areas = []
             transform = ResizeLongestSide(self.model.image_encoder.img_size)
@@ -243,35 +230,35 @@ class AstroSAM:
                 mask_area = np.sum(mask)
                 mask_areas.append(mask_area)
                 
-            if len(transformed_masks) > len(transformed_bboxes):
+            # if len(transformed_masks) > len(transformed_bboxes):
                     
-                fig, axs = plt.subplots(1, 2, figsize=(40, 20))
-                axs[0].imshow(transformed_image)
-                dataset_utils.show_masks(transformed_masks, axs[0], random_color=False)
-                for box in transformed_bboxes:
-                    rect = patches.Rectangle(
-                        (box[0], box[1]), 
-                        box[2], 
-                        box[3], 
-                        linewidth=1, 
-                        edgecolor='r', 
-                        facecolor='none')
-                    axs[0].add_patch(rect)
+            #     fig, axs = plt.subplots(1, 2, figsize=(40, 20))
+            #     axs[0].imshow(transformed_image)
+            #     dataset_utils.show_masks(transformed_masks, axs[0], random_color=False)
+            #     for box in transformed_bboxes:
+            #         rect = patches.Rectangle(
+            #             (box[0], box[1]), 
+            #             box[2], 
+            #             box[3], 
+            #             linewidth=1, 
+            #             edgecolor='r', 
+            #             facecolor='none')
+            #         axs[0].add_patch(rect)
                     
-                for box in transformed_boxes_from_masks:
-                    rect = patches.Rectangle(
-                        (box[0], box[1]), 
-                        box[2], 
-                        box[3], 
-                        linewidth=1, 
-                        edgecolor='b', 
-                        facecolor='none')
-                    axs[0].add_patch(rect)
+            #     for box in transformed_boxes_from_masks:
+            #         rect = patches.Rectangle(
+            #             (box[0], box[1]), 
+            #             box[2], 
+            #             box[3], 
+            #             linewidth=1, 
+            #             edgecolor='b', 
+            #             facecolor='none')
+            #         axs[0].add_patch(rect)
                     
-                axs[0].set_title(f'masks from augm ', fontsize=40)
-                axs[1].imshow(transformed_image)
-                plt.show()
-                plt.close()
+            #     axs[0].set_title(f'masks from augm ', fontsize=40)
+            #     axs[1].imshow(transformed_image)
+            #     plt.show()
+            #     plt.close()
                 
             for k in range(len(transformed_masks)): 
                 prompt_box = np.array(dataset_utils.mask_to_bbox(transformed_masks[k])) # XYXY format
@@ -327,36 +314,20 @@ class AstroSAM:
                 
             low_res_masks = max_low_res_masks
             iou_predictions = max_ious
-            iou_image_loss = []
             pred_masks = self.model.postprocess_masks(low_res_masks, input_size, original_image_size).to(self.device)
-
-            # Apply Gaussian filter on logits
-            # kernel_size = 5
-            # sigma = 2
-            # gaussian_kernel = predictor_utils.create_gaussian_kernel(kernel_size, sigma).to(self.device)
-            
-            # pred_masks = F.conv2d(pred_masks, gaussian_kernel, padding=kernel_size//2)
             threshold_masks = torch.sigmoid(10 * (pred_masks - self.model.mask_threshold)) # sigmoid with steepness
             gt_threshold_masks = torch.as_tensor(transformed_masks, dtype=torch.float32).to(device=self.device)
             numpy_gt_threshold_mask = gt_threshold_masks.contiguous().detach().cpu().numpy()
-            total_mask_areas = np.array(mask_areas).sum()
-            for i in range(threshold_masks.shape[0]):
-                if len(gt_threshold_masks)>0:
-                    iou_per_mask = loss_utils.iou_single(threshold_masks[i][0], gt_threshold_masks[i])
-                    ious.append(iou_per_mask)
-                    iou_image_loss.append((torch.abs(iou_predictions.permute(1, 0)[0][i] - iou_per_mask)) * mask_areas[i]/total_mask_areas)
-                else:
-                    ious.append(0.0)
-                    iou_image_loss.append(0.0)
+            ious, iou_image_loss = predictor_utils.calculate_iou_loss(threshold_masks, gt_threshold_masks, iou_predictions, mask_areas)
                     
-            # compute weighted dice loss (smaller weights on smaller objects)
+            # compute weighted loss with smaller weights on smaller objects
             focal = loss_utils.focal_loss_per_mask_pair(torch.squeeze(pred_masks, dim=1), gt_threshold_masks, mask_areas)
             dice = loss_utils.dice_loss_per_mask_pair(torch.squeeze(threshold_masks, dim=1), gt_threshold_masks, mask_areas) 
             # mse = F.mse_loss(threshold_masks.squeeze(1), gt_threshold_masks)
-            image_loss.append(20 * focal + dice) # used in SAM paper
+            image_loss.append(20 * focal + dice) 
             image_loss = torch.stack(image_loss)
-            iou_image_loss = torch.stack(iou_image_loss)
-            image_loss = torch.mean(image_loss) + torch.mean(iou_image_loss) #* loss_scaling_factor
+            image_loss = torch.mean(image_loss) + torch.mean(iou_image_loss)
+            
             # if show_plot:
             #     for i in range(threshold_masks.shape[0]):
             #         fig, axs = plt.subplots(1, 3, figsize=(40, 20))
@@ -520,109 +491,113 @@ class AstroSAM:
                 for i in range(len(non_resized_masks)):
                         yolo_masks.append(cv2.resize(non_resized_masks[i], image.shape[:2][::-1], interpolation=cv2.INTER_LINEAR)) 
 
-                for (boxes,) in yolo_predictor_utils.batch_iterator(300, input_boxes): # usually, there aren't that many annotations per image
-                    sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
+                sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
                                 points=None,
-                                boxes=boxes,
+                                boxes=input_boxes,
                                 masks=None,)
 
-                    low_res_masks, iou_predictions = self.model.mask_decoder(
-                                    image_embeddings=image_embedding,
-                                    image_pe=self.model.prompt_encoder.get_dense_pe(),
-                                    sparse_prompt_embeddings=sparse_embeddings,
-                                    dense_prompt_embeddings=dense_embeddings,
-                                    multimask_output=True,
-                                )
-                        
-                    max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256)).to(self.device)
-                    max_ious = torch.zeros((iou_predictions.shape[0], 1))
-                  
-                    # Take all low_res_mask correspnding to the index of max_iou
-                    for i in range(low_res_masks.shape[0]):
-                        max_iou_index = torch.argmax(iou_predictions[i])
-                        max_low_res_masks[i] = low_res_masks[i][max_iou_index].unsqueeze(0)
-                        max_ious[i] = iou_predictions[i][max_iou_index]
+                low_res_masks, iou_predictions = self.model.mask_decoder(
+                                image_embeddings=image_embedding,
+                                image_pe=self.model.prompt_encoder.get_dense_pe(),
+                                sparse_prompt_embeddings=sparse_embeddings,
+                                dense_prompt_embeddings=dense_embeddings,
+                                multimask_output=True,
+                            )
                     
-                    low_res_masks = max_low_res_masks
-                    iou_predictions = max_ious
-                    pred_masks = self.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
-                    threshold_masks = torch.sigmoid(10 * (pred_masks - self.model.mask_threshold)) # sigmoid with steepness
-                    sam_mask_pre = (threshold_masks > 0.5)*1.0
-                    sam_mask.append(sam_mask_pre.squeeze(1))
+                max_low_res_masks = torch.zeros((low_res_masks.shape[0], 1, 256, 256)).to(self.device)
+                max_ious = torch.zeros((iou_predictions.shape[0], 1))
+                
+                # Take all low_res_mask correspnding to the index of max_iou
+                for i in range(low_res_masks.shape[0]):
+                    max_iou_index = torch.argmax(iou_predictions[i])
+                    max_low_res_masks[i] = low_res_masks[i][max_iou_index].unsqueeze(0)
+                    max_ious[i] = iou_predictions[i][max_iou_index]
+                
+                low_res_masks = max_low_res_masks
+                iou_predictions = max_ious
+                pred_masks = self.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
+                threshold_masks = torch.sigmoid(10 * (pred_masks - self.model.mask_threshold)) # sigmoid with steepness
+                sam_mask_pre = (threshold_masks > 0.5)*1.0
+                sam_mask.append(sam_mask_pre.squeeze(1))
 
-                    # reshape gt_masks to same shape as predicted masks
+                # reshape gt_masks to same shape as predicted masks
+                if len(gt_masks) == 0:
+                    print(f'No GT masks for {image_name}')
+                    gt_masks_tensor = torch.zeros((1, 1, image.shape[0], image.shape[1])).to(self.device)
+                else:
                     gt_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in gt_masks], dim=0).to(self.device)
-                    # segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match, mask_areas = loss_utils.segm_loss_match_iou_based(
-                    #     threshold_masks, 
-                    #     gt_masks_tensor, 
-                    #     obj_results[0].boxes.cls.detach().cpu().numpy(), 
-                    #     gt_classes, 
-                    #     iou_predictions,
-                    #     mask_areas)
-
-                    segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match  = loss_utils.segm_loss_match_hungarian(
-                        self.use_yolo_masks,
-                        threshold_masks,
-                        gt_masks_tensor, 
-                        obj_results[0].boxes.cls.detach().cpu().numpy(), 
-                        gt_classes, 
-                        iou_predictions,
-                        mask_areas,
-                        image,
-                        yolo_masks,
-                        self.wt_classes_ids,
-                        self.wt_threshold)
+                # segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match, mask_areas = loss_utils.segm_loss_match_iou_based(
+                #     threshold_masks, 
+                #     gt_masks_tensor, 
+                #     obj_results[0].boxes.cls.detach().cpu().numpy(), 
+                #     gt_classes, 
+                #     iou_predictions,
+                #     mask_areas)
+                segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match  = loss_utils.segm_loss_match_hungarian(
+                    self.use_yolo_masks,
+                    threshold_masks,
+                    gt_masks_tensor, 
+                    obj_results[0].boxes.cls.detach().cpu().numpy(), 
+                    gt_classes, 
+                    iou_predictions,
+                    mask_areas,
+                    image,
+                    yolo_masks,
+                    self.wt_classes_ids,
+                    self.wt_threshold)
                     
-                    threshold_preds = np.array([preds[i][0]>0.5*1 for i in range(len(preds))])
-                    all_preds.append(threshold_preds)
-                    all_gts.append(gts)
-                    all_gt_cls.append(gt_classes_match)
-                    all_pred_cls.append(pred_classes_match)
-                    all_iou_scores.append(ious_match)
-                    all_mask_areas.append(mask_areas)
-                    pred_images.append(image_name)
-                    
-                    batch_losses_sam.append(segm_loss_sam)
-                    del sparse_embeddings, dense_embeddings, low_res_masks, max_low_res_masks, gt_masks, 
-                    del segm_loss_sam, threshold_masks, pred_masks, sam_mask_pre
-                    torch.cuda.empty_cache()
+                # ious, iou_image_loss = predictor_utils.calculate_iou_loss(np.array(preds), np.array(gts), ious_match, mask_areas)
+                threshold_preds = np.array([preds[i][0]>0.5*1 for i in range(len(preds))])
+                all_preds.append(threshold_preds)
+                all_gts.append(gts)
+                all_gt_cls.append(gt_classes_match)
+                all_pred_cls.append(pred_classes_match)
+                all_iou_scores.append(ious_match)
+                all_mask_areas.append(mask_areas)
+                pred_images.append(image_name)
+                
+                batch_losses_sam.append(segm_loss_sam) #+iou_image_loss)
+                del sparse_embeddings, dense_embeddings, low_res_masks, max_low_res_masks, #gt_masks, 
+                del segm_loss_sam, threshold_masks, pred_masks, sam_mask_pre
+                torch.cuda.empty_cache()
 
-                    # if phase == 'val':
-                    #     print(image_name)
-                    #     fig, axes = plt.subplots(1, 4, figsize=(18, 6)) 
-                        
-                    #     # Plot 1: GT Masks
-                    #     axes[0].imshow(image)
-                    #     axes[0].set_title('GT Masks')
-                    #     dataset_utils.show_masks(gt_masks_tensor.squeeze(1).squeeze(1).detach().cpu().numpy(), axes[0], random_color=True)
-                        
-                    #     # Plot 2: YOLO Masks
-                    #     axes[1].imshow(image)
-                    #     axes[1].set_title('YOLOv8n predicted Masks')
-                    #     dataset_utils.show_masks(yolo_masks, axes[1], random_color=True)
-                        
-                    #     # Plot 3: Bounding Boxes
-                    #     image1 = cv2.resize(image, (1024, 1024))
-                    #     for bbox in boxes:
-                    #         x1, y1, x2, y2 = bbox.detach().cpu().numpy()
-                    #         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                    #         cv2.rectangle(image1, (x1, y1), (x2, y2), (0, 255, 0), 2) 
-                    #     image1_rgb = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
-                    #     axes[2].imshow(image1_rgb)
-                    #     axes[2].set_title('YOLOv8n predicted Bboxes')
-                        
-                    #     # Plot 4: SAM Masks
-                    #     axes[3].imshow(image)
-                    #     dataset_utils.show_masks(threshold_preds, axes[3], random_color=True)
-                    #     axes[3].set_title('MobileSAM predicted masks')
-                    #     plt.tight_layout() 
-                    #     # plt.savefig(f'./plots/combined_plots.png')
-                    #     plt.show()
-
-                    del obj_results, image, sam_mask, yolo_masks, input_boxes
-                    del threshold_preds, preds, gts, gt_classes_match, pred_classes_match, ious_match
-                    torch.cuda.empty_cache()
+                if phase == 'val' and len(gt_masks) == 0:
+                    print(image_name)
+                    fig, axes = plt.subplots(1, 4, figsize=(18, 6)) 
                     
+                    # Plot 1: GT Masks
+                    axes[0].imshow(image)
+                    axes[0].set_title('GT Masks')
+                    if len(gt_masks) > 0:
+                        dataset_utils.show_masks(gt_masks_tensor.squeeze(1).squeeze(1).detach().cpu().numpy(), axes[0], random_color=True)
+        
+                    # Plot 2: YOLO Masks
+                    axes[1].imshow(image)
+                    axes[1].set_title('YOLOv8n predicted Masks')
+                    dataset_utils.show_masks(yolo_masks, axes[1], random_color=True)
+                    
+                    # Plot 3: Bounding Boxes
+                    image1 = cv2.resize(image, (1024, 1024))
+                    for bbox in input_boxes:
+                        x1, y1, x2, y2 = bbox.detach().cpu().numpy()
+                        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                        cv2.rectangle(image1, (x1, y1), (x2, y2), (0, 255, 0), 2) 
+                    image1_rgb = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
+                    axes[2].imshow(image1_rgb)
+                    axes[2].set_title('YOLOv8n predicted Bboxes')
+                    
+                    # Plot 4: SAM Masks
+                    axes[3].imshow(image)
+                    dataset_utils.show_masks(threshold_preds, axes[3], random_color=True)
+                    axes[3].set_title('MobileSAM predicted masks')
+                    plt.tight_layout() 
+                    # plt.savefig(f'./plots/combined_plots.png')
+                    plt.show()
+
+                del obj_results, image, sam_mask, yolo_masks, input_boxes
+                del threshold_preds, preds, gts, gt_classes_match, pred_classes_match, ious_match
+                torch.cuda.empty_cache()
+                
             mean_loss_sam = torch.mean(torch.stack(batch_losses_sam))
             epoch_sam_loss.append(mean_loss_sam.item())
             

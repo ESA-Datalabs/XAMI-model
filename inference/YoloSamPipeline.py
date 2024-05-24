@@ -85,7 +85,7 @@ class YoloSam:
     input_image = predictor_utils.set_mean_and_transform(image, self.mobile_sam_model, self.transform, self.device)
              
     if len(obj_results[0]) == 0:
-      # print("No objects detected. Check model configuration or input image.")
+      print("No objects detected. Check model configuration or input image.")
       return None, None, (time.time()-start_time_all)*1000, 1
 
     predicted_classes = obj_results[0].boxes.cls
