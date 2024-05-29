@@ -11,7 +11,7 @@ Check [run_yolo_train_splits.sh](https://github.com/ESA-Datalabs/XAMI-model/blob
 
 ### Train SAM layers
 
-Check [run_sam_train_splits.sh](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/run_sam_train_splits.sh) and [train_sam.py](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/train_sam.py)
+Check [run_sam_train_splits.sh](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/run_sam_train_splits.sh) and [train_sam.py](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/train_sam.py).
 
 ```bash
 ./run_sam_train_splits.sh
