@@ -19,7 +19,7 @@ conda activate xami_model_env
 
 ## Downloading the dataset and model checkpoints from HuggingFace🤗
 
-See [download_dataset_and_weights.ipynb](https://github.com/ESA-Datalabs/XAMI/blob/main/download_dataset_and_weights.ipynb) for how to download the dataset and weights. 
+See [download_dataset_and_weights.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/download_dataset_and_weights.ipynb) for how to download the dataset and weights. 
 
 <!-- 1. **Downloading** the dataset archive from [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset/blob/main/xami_dataset.zip).
 
@@ -31,13 +31,13 @@ huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type d
 
 ## Model Inference
 
-After cloning the repository and setting up your environment, use the following Python code for model loading and inference (see [yolo_sam_inference.ipynb](https://github.com/ESA-Datalabs/XAMI/blob/main/yolo_sam_inference.ipynb)).
+After cloning the repository and setting up your environment, use the following Python code for model loading and inference (see [yolo_sam_inference.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/yolo_sam_inference.ipynb)).
 
 ```python
 import sys
 from inference.YoloSamPipeline import YoloSam
 
-yolo_checkpoint = './train/weights/yolo_weights/best.pt'
+yolo_checkpoint = './train/weights/yolo_weights/yolov8_detect_300e_best.pt'
 sam_checkpoint = './train/weights/sam_weights/sam_0_best.pth'
 device_id = 0
 
@@ -57,7 +57,7 @@ masks = yolo_sam_pipeline.run_predict(
 
 ## Training the model
 
-Check the training [README.md](https://github.com/ESA-Datalabs/XAMI/blob/main/train/README.md).
+Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/README.md).
 
 ## Licence 
 
