@@ -9,8 +9,8 @@ The code uses images from the XAMI dataset (available on [Github](https://github
 ## Cloning the repository
 
 ```bash
-git clone https://github.com/ESA-Datalabs/XAMI.git
-cd XAMI
+git clone https://github.com/ESA-Datalabs/XAMI-model.git
+cd XAMI-model
 
 # creating the environment
 conda env create -f environment.yaml
@@ -19,7 +19,7 @@ conda activate xami_model_env
 
 ## Downloading the dataset and model checkpoints from HuggingFace🤗
 
-See [download_dataset_and_weights.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/download_dataset_and_weights.ipynb) for how to download the dataset and weights. 
+Check [dataset_and_model.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/dataset_and_model.ipynb) for how to download the dataset and model weights. 
 
 <!-- 1. **Downloading** the dataset archive from [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset/blob/main/xami_dataset.zip).
 
