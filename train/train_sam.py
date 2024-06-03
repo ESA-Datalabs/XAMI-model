@@ -24,7 +24,7 @@ cudnn.benchmark, cudnn.deterministic = False, True
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 from dataset import dataset_utils
-from sam_predictor import load_dataset, astro_sam #, residualAttentionBlock
+from sam_predictor import load_dataset, astro_sam, residualAttentionBlock, predictor_utils
 
 if len(sys.argv)==3:
     kfold_iter = int(sys.argv[1])
@@ -36,10 +36,15 @@ if len(sys.argv)==1:
 lr=3e-4
 wd=0.0005
 wandb_track=True
-num_epochs=60
-use_lr_warmup=True
+num_epochs=50
+use_lr_initial_decay=True
 n_epochs_stop = 15 # Early stopping
 work_dir = './output_sam'
+
+work_dir = predictor_utils.get_next_directory_name(work_dir)
+os.makedirs(work_dir)
+print(f"Working directory: {work_dir}")
+
 # torch.cuda.set_device(device_id)
 device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
 
@@ -55,11 +60,6 @@ print("DEVICE", device)
 mobile_sam_dir = os.path.join(os.getcwd(), '..', 'mobile_sam')
 mobile_sam_checkpoint = os.path.join(mobile_sam_dir,"weights/mobile_sam.pt")
 
-if not os.path.exists(work_dir):
-	os.makedirs(work_dir)
-else:
-    print(f"Output directory {work_dir} already exists.")
-    
 # Dataset split
 
 input_dir = f'../xami_dataset/'
@@ -117,14 +117,46 @@ from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_
 model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
 model.to(device);
 predictor = SamPredictor(model)
-
-# # Residual Attention Block
-# residualAttentionBlock = residualAttentionBlock.ResidualAttentionBlock(d_model=256, n_head=8, mlp_ratio=4.0).to(device)
-# for name, param in residualAttentionBlock.named_parameters():
-# 	param.requires_grad = True # this is usually already true
-
-## setup the AstroSAM model
 astrosam_model = astro_sam.AstroSAM(model, device, predictor) #, residualAttentionBlock)
+
+# # # Residual Attention Block
+# residual_block = residualAttentionBlock.ResidualAttentionBlock(d_model=768, n_head=8, mlp_ratio=4.0).to(device)
+# checkpoint = torch.load('./weights/ViT-B-32__openai.pth')
+# param_mapping = {
+#     'visual.transformer.resblocks.0.ln_1.weight': 'ln_1.weight',
+#     'visual.transformer.resblocks.0.ln_1.bias': 'ln_1.bias',
+#     'visual.transformer.resblocks.0.attn.in_proj_weight': 'attn.in_proj_weight',
+#     'visual.transformer.resblocks.0.attn.in_proj_bias': 'attn.in_proj_bias',
+#     'visual.transformer.resblocks.0.attn.out_proj.weight': 'attn.out_proj.weight',
+#     'visual.transformer.resblocks.0.attn.out_proj.bias': 'attn.out_proj.bias',
+#     'visual.transformer.resblocks.0.ln_2.weight': 'ln_2.weight',
+#     'visual.transformer.resblocks.0.ln_2.bias': 'ln_2.bias',
+#     'visual.transformer.resblocks.0.mlp.c_fc.weight': 'mlp.c_fc.weight',
+#     'visual.transformer.resblocks.0.mlp.c_fc.bias': 'mlp.c_fc.bias',
+#     'visual.transformer.resblocks.0.mlp.c_proj.weight': 'mlp.c_proj.weight',
+#     'visual.transformer.resblocks.0.mlp.c_proj.bias': 'mlp.c_proj.bias'
+# }
+
+# model_state_dict = residual_block.state_dict()
+
+# for checkpoint_param_name, model_param_name in param_mapping.items():
+#     if checkpoint_param_name in checkpoint and model_param_name in model_state_dict:
+#         model_state_dict[model_param_name] = checkpoint[checkpoint_param_name]
+
+# residual_block.load_state_dict(model_state_dict)
+
+# for name, param in residual_block.named_parameters():
+#     param.requires_grad = True 
+
+# astrosam_model = astro_sam.AstroSAM(
+#     model, 
+#     device, 
+#     predictor, 
+#     use_yolo_masks=False, 
+#     # wt_threshold=0.6, 
+#     # wt_classes_ids = [1.0, 4.0],
+#     apply_segm_CR=True,
+#     residualAttentionBlock=residual_block)
 
 if wandb_track:
     # !pip install wandb
@@ -159,7 +191,7 @@ optimizer = torch.optim.AdamW(parameters_to_optimize, lr=lr, weight_decay=wd)
 # Scheduler
 scheduler=None
 
-if use_lr_warmup:
+if use_lr_initial_decay:
     initial_lr = lr
     final_lr = 6e-5
     total_steps = 16  # total steps over which the learning rate should decrease
@@ -217,7 +249,7 @@ if len(cr_transforms) > 0:
 print(f"🚀  Training {astrosam_model.model.__class__.__name__} with {len(training_image_paths)} training images and {len(val_image_paths)} validation images.")
 print(f"🚀  Training for {num_epochs} epochs with effective batch size {batch_size * (len(cr_transforms) + 1)} and learning rate {lr}.")
 print(f"🚀  Initial learning rate: {lr}. Weight decay: {wd}.")
-print(f"🚀  Using learning rate warmup scheduler: {use_lr_warmup}. ")
+print(f"🚀  Using learning rate initial decay scheduler: {use_lr_initial_decay}. ")
 print(f"🚀  Early stopping after {n_epochs_stop} epochs without improvement.")
 print(f"🚀  Training started.\n")
 
@@ -225,7 +257,8 @@ for epoch in range(num_epochs):
 
     # Train
     astrosam_model.model.train()
-    # astrosam_model.residualAttentionBlock.train()
+    if astrosam_model.residualAttentionBlock is not None:
+        astrosam_model.residualAttentionBlock.train()
 	
     epoch_loss = astrosam_model.train_validate_step(
         train_dataloader, 
@@ -241,7 +274,8 @@ for epoch in range(num_epochs):
     
     # Validate
     astrosam_model.model.eval()
-    # astrosam_model.residualAttentionBlock.eval()
+    if astrosam_model.residualAttentionBlock is not None:
+        astrosam_model.residualAttentionBlock.eval()
 	
     with torch.no_grad():
         epoch_val_loss =  astrosam_model.train_validate_step(
@@ -267,7 +301,7 @@ for epoch in range(num_epochs):
         best_valid_loss = epoch_val_loss
         best_epoch = epoch
         best_model = astrosam_model.model
-        # best_residual_attn = residualAttentionBlock
+        best_residual_attn = astrosam_model.residualAttentionBlock
         epochs_no_improve = 0
     else:
         epochs_no_improve += 1
@@ -281,7 +315,8 @@ for epoch in range(num_epochs):
                 
 torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_best.pth')
 torch.save(astrosam_model.model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_last.pth')
-# torch.save(astrosam_model.residualAttentionBlock.state_dict(), f'{work_dir}/residual_attn_blk_{kfold_iter}_{datetime.now()}_best.pth')
+if best_residual_attn is not None:
+    torch.save(best_residual_attn.state_dict(), f'{work_dir}/residual_attn_blk_{kfold_iter}_{datetime.now()}_best.pth')
 
 if wandb_track:
     wandb.run.summary["batch_size"] = batch_size * (len(cr_transforms) + 1)
