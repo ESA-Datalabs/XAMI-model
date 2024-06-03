@@ -4,6 +4,8 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+
+from ultralytics import RTDETR
 from dataset import dataset_utils
 from sam_predictor import predictor_utils
 from ultralytics import YOLO, RTDETR
@@ -12,15 +14,14 @@ import tqdm
 import os
 
 sys.path.append(os.path.join(os.getcwd(), 'mobile_sam'))
-print(os.path.join(os.getcwd(), 'mobile_sam'))
-from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
+from mobile_sam import sam_model_registry, SamPredictor
 
-class YoloSam:
-  def __init__(self, device, yolo_checkpoint, sam_checkpoint, model_type='vit_t', use_yolo_masks=True):
+class Xami:
+  def __init__(self, device, detr_checkpoint, sam_checkpoint, model_type='vit_t', use_detr_masks=False):
     print("Initializing the model...")
 
     self.device = device
-    self.yolo_checkpoint = yolo_checkpoint
+    self.detr_checkpoint = detr_checkpoint
     self.sam_checkpoint = sam_checkpoint
     self.classes = {0:('central-ring', (1,252,214)), 
                     1:('other', (255,128,1)),
@@ -28,15 +29,14 @@ class YoloSam:
                     3:('smoke-ring', (159,21,100)),
                     4:('star-loop', (255, 188, 248))}
 
-    self.use_yolo_masks = use_yolo_masks # whether to use YOLO masks for faint sources
+    self.use_detr_masks = use_detr_masks # whether to use YOLO masks for faint sources
 
-    # Step 1: Object detection with YOLO
-    if 'detr' in yolo_checkpoint:
-      self.yolo_model = RTDETR(self.yolo_checkpoint) 
-    else:
-      self.yolo_model = YOLO(self.yolo_checkpoint) 
-    
-    self.yolo_model.to(self.device)
+    # Step 1: Object detection
+    self.detector = YOLO(self.detr_checkpoint)
+    if self.use_detr_masks:
+      self.detector = YOLO(self.detr_checkpoint)
+      
+    self.detector.to(self.device)
     # Step 2: Instance segmentation with SAM on detected objects
     self.mobile_sam_model, self.sam_predictor = self.load_sam_model(model_type)
     self.transform = ResizeLongestSide(self.mobile_sam_model.image_encoder.img_size)
@@ -65,7 +65,7 @@ class YoloSam:
     """
     # Warm up YOLO model
     for _ in tqdm.tqdm(range(number_of_runs), desc="Warming up YOLO model", bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
-      _ = self.yolo_model.predict('./inference/warmup_image.png', verbose=False, conf=0.2) 
+      _ = self.detector.predict('./inference/warmup_image.png', verbose=False, conf=0.2) 
 
     # Warm up SAM model
     for _ in tqdm.tqdm(range(number_of_runs), desc="Warming up SAM model", bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
@@ -75,11 +75,11 @@ class YoloSam:
       )
       
   @torch.no_grad()
-  def run_predict(self, image_path, yolo_conf=0.2, show_masks=False):
+  def run_predict(self, image_path, yolo_conf=0.2, save_pred=False):
 
     start_time_all = time.time()
     image = cv2.imread(image_path)
-    obj_results = self.yolo_model.predict(image_path, verbose=False, conf=yolo_conf) 
+    obj_results = self.detector.predict(image_path, verbose=False, conf=yolo_conf) 
 
     # set a specific mean for each image
     input_image = predictor_utils.set_mean_and_transform(image, self.mobile_sam_model, self.transform, self.device)
@@ -94,7 +94,7 @@ class YoloSam:
     input_boxes = self.sam_predictor.transform.apply_boxes(boxes_numpy, image.shape[:-1])
     input_boxes = torch.from_numpy(input_boxes).to(self.device)
     sam_mask = []
-    if self.use_yolo_masks:
+    if self.use_detr_masks:
       yolo_masks = []
       non_resized_masks = obj_results[0].masks.data.cpu().numpy()
       for i in range(len(non_resized_masks)):
@@ -110,8 +110,15 @@ class YoloSam:
         
     low_res_masks=self.sam_predictor.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
     
-    if self.use_yolo_masks:
-      low_res_masks = predictor_utils.process_faint_masks(image, low_res_masks, yolo_masks, predicted_classes, self.device)
+    if self.use_detr_masks:
+      low_res_masks = predictor_utils.process_faint_masks(
+        image, 
+        low_res_masks, 
+        yolo_masks, 
+        predicted_classes, 
+        self.device,
+        wt_threshold=0.6, 
+        wt_classes=[1.0, 2.0, 4.0])
 
     # Apply Gaussian filter on logits
     kernel_size, sigma = 5, 2
@@ -128,7 +135,7 @@ class YoloSam:
       print("No masks detected. Check model configuration or input image.")
       return None
 
-    if show_masks:
+    if save_pred:
       fig, axes = plt.subplots(1, 3, figsize=(20, 8)) 
       image_copy = image.copy()
 
@@ -138,7 +145,13 @@ class YoloSam:
       # plot yolobounding boxes on the image with class names and Iou predictions	
 
       for i in range (len(boxes_numpy)):
-        dataset_utils.visualize_titles(image_copy, boxes_numpy[i], self.classes[predicted_classes[i].item()][0], font_thickness = 1, font_scale=0.35)
+        dataset_utils.visualize_titles(
+          image_copy, 
+          boxes_numpy[i], 
+          self.classes[predicted_classes[i].item()][0], 
+          font_thickness=1, 
+          font_scale=0.35)
+        
       axes[1].imshow(image_copy)
       for i in range (len(boxes_numpy)):
         dataset_utils.show_box(boxes_numpy[i], axes[1])
@@ -146,7 +159,7 @@ class YoloSam:
       dataset_utils.show_masks(sam_masks_numpy, axes[2], random_color=False, colours=colours)
       axes[2].set_title('Yolo-SAM predicted masks')
       plt.tight_layout() 
-      # plt.savefig(f'./{image_path.split("/")[-1].replace(".png", "_predicted.png")}')
+      plt.savefig(f'./{image_path.split("/")[-1].replace(".png", "_predicted.png")}')
       plt.show()
       
     return sam_mask_pre, obj_results, inference_time, 0 # obj_results for further inference 
@@ -157,10 +170,9 @@ class YoloSam:
     input_boxes,
     ):
     
-    # IMAGE ENCODER
     image_embedding = self.mobile_sam_model.image_encoder(input_image) # [1, 256, 64, 64]
            
-    sparse_embeddings, dense_embeddings = self.mobile_sam_model.prompt_encoder( # torch.Size([N, 2, 256]),  torch.Size([N, 256, 64, 64])
+    sparse_embeddings, dense_embeddings = self.mobile_sam_model.prompt_encoder(
         points=None,
         boxes=input_boxes,
         masks=None,) 

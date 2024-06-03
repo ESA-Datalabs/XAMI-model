@@ -100,29 +100,18 @@ def segm_loss_match_hungarian(
     total_focal_loss = 0
     
     for pred_idx, gt_idx in zip(row_ind, col_ind):
-        if torch.sum(gt_masks) > 0:
-            dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
-            focal_loss = compute_focal_loss(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
-            preds.append(pred_masks[pred_idx].detach().cpu().numpy())
-            gts.append(gt_masks[gt_idx].detach().cpu().numpy())
-            pred_classes.append(int(all_pred_classes[pred_idx]))
-            gt_classes.append(all_gt_classes[gt_idx])
-            iou_scores_sam.append(iou_scores[pred_idx].detach().cpu().numpy())
+        dice_loss = compute_dice_loss(pred_masks[pred_idx], gt_masks[gt_idx])
+        focal_loss = compute_focal_loss(pred_masks[pred_idx].float(), gt_masks[gt_idx].float())
+        preds.append(pred_masks[pred_idx].detach().cpu().numpy())
+        gts.append(gt_masks[gt_idx].detach().cpu().numpy())
+        pred_classes.append(int(all_pred_classes[pred_idx]))
+        gt_classes.append(all_gt_classes[gt_idx])
+        iou_scores_sam.append(iou_scores[pred_idx].detach().cpu().numpy())
+        
+        # if mask_areas is not None:
+        #     dice_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
+        #     focal_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
             
-            # if mask_areas is not None:
-            #     dice_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
-            #     focal_loss *= mask_areas[gt_idx]/sum(mask_areas) # weighted loss given mask size
-                
-        else: # False Positives
-            empty_mask = torch.zeros_like(pred_masks[pred_idx])
-            dice_loss = 1.0 
-            focal_loss = 1.0 
-            preds.append(pred_masks[pred_idx].detach().cpu().numpy())
-            gts.append(empty_mask.detach().cpu().numpy())
-            pred_classes.append(int(all_pred_classes[pred_idx]))
-            gt_classes.append(-1)
-            iou_scores_sam.append(iou_scores[pred_idx].detach().cpu().numpy())
-
         if use_yolo_masks:
             if yolo_masks is not None and wt_threshold is not None and wt_classes is not None and image is not None:
                 combined_preds.append(predictor_utils.process_faint_masks(

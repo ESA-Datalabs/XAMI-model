@@ -48,9 +48,8 @@ class SamAutomaticMaskGenerator:
         crop_n_points_downscale_factor: int = 1,
         point_grids: Optional[List[np.ndarray]] = None,
         min_mask_region_area: int = 0,
-        output_mode: str = "binary_mask",
-        negative_mask: Optional[torch.Tensor] = None,
-    ) -> None:
+        output_mode: str = "binary_mask"
+	) -> None:
         """
         Using a SAM model, generates masks for the entire image.
         Generates a grid of point prompts over the image, then filters
@@ -121,7 +120,7 @@ class SamAutomaticMaskGenerator:
         if min_mask_region_area > 0:
             import cv2  # type: ignore # noqa: F401
 
-        self.predictor = SamPredictor(model, negative_mask)
+        self.predictor = SamPredictor(model)
         self.points_per_batch = points_per_batch
         self.pred_iou_thresh = pred_iou_thresh
         self.stability_score_thresh = stability_score_thresh

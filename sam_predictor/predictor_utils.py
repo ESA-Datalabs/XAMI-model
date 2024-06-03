@@ -11,6 +11,8 @@ from dataset import dataset_utils
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from losses import loss_utils
+import os
+import re
 
 def transform_image(model, transform, image, k, device):
     
@@ -525,3 +527,34 @@ def calculate_iou_loss(threshold_masks, gt_threshold_masks, iou_predictions, mas
         iou_image_loss.append((torch.abs(iou_predictions.permute(1, 0)[0][i] - iou_per_mask)) * mask_areas[i] / total_mask_areas)
     
     return ious, torch.stack(iou_image_loss)
+
+
+def get_next_directory_name(base_dir):
+    # Get the base directory name without index
+    base_name = os.path.basename(base_dir)
+    parent_dir = os.path.dirname(base_dir)
+    
+    # Get all directories in the parent directory
+    all_dirs = os.listdir(parent_dir)
+    
+    # Filter directories that match the pattern base_name_index
+    pattern = re.compile(rf"{re.escape(base_name)}_(\d+)")
+    indices = [
+        int(match.group(1)) for match in (pattern.match(d) for d in all_dirs) if match
+    ]
+    
+    # If there are no matching directories, start with index 1
+    if not indices:
+        next_index = 1
+    else:
+        next_index = max(indices) + 1
+    
+    return os.path.join(parent_dir, f"{base_name}_{next_index}")
+
+def convert_tensors(data):
+    if isinstance(data, dict):
+        return {key: convert_tensors(value) for key, value in data.items()}
+    elif isinstance(data, torch.Tensor):
+        return data.tolist() if data.ndim > 0 else data.item()
+    else:
+        return data
