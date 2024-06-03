@@ -75,7 +75,7 @@ class Xami:
       )
       
   @torch.no_grad()
-  def run_predict(self, image_path, yolo_conf=0.2, save_pred=False):
+  def run_predict(self, image_path, yolo_conf=0.2, show_masks=False):
 
     start_time_all = time.time()
     image = cv2.imread(image_path)
@@ -135,7 +135,7 @@ class Xami:
       print("No masks detected. Check model configuration or input image.")
       return None
 
-    if save_pred:
+    if show_masks:
       fig, axes = plt.subplots(1, 3, figsize=(20, 8)) 
       image_copy = image.copy()
 

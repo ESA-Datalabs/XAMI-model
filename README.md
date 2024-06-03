@@ -35,19 +35,19 @@ After cloning the repository and setting up the environment, use the following P
 
 ```python
 import sys
-from inference.XamiPipeline import Xami
+from inference.xami_inference import Xami
 
-yolo_checkpoint = './train/weights/yolo_weights/yolov8_detect_300e_best.pt'
+detr_checkpoint = './train/weights/yolo_weights/yolov8_detect_300e_best.pt'
 sam_checkpoint = './train/weights/sam_weights/sam_0_best.pth'
-device_id = 0
 
-# the SAM model checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
-yolo_sam_pipeline = Xami(
-    device=f'cuda:{device_id}', 
-    yolo_checkpoint=yolo_checkpoint, 
-    sam_checkpoint=sam_checkpoint, 
-    model_type='vit_t')
-
+# the SAM checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
+detr_sam_pipeline = Xami(
+    device='cuda:0',
+    detr_checkpoint=detr_checkpoint, #YOLO(detr_checkpoint)
+    sam_checkpoint=sam_checkpoint,
+    model_type='vit_t',
+    use_detr_masks=True)
+    
 # prediction example
 masks = yolo_sam_pipeline.run_predict(
     './example_images/S0743200101_V.jpg', 
