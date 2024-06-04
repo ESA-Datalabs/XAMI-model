@@ -2,7 +2,6 @@
 <h1> XAMI: XMM-Newton optical Artefact Mapping for astronomical Instance segmentation </h1>
 </div>
 
-
 ## 💫 Introduction
 The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images represent observations from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
 
