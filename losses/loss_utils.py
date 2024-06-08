@@ -4,7 +4,6 @@ from scipy.optimize import linear_sum_assignment
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from dataset import dataset_utils
 from sam_predictor import predictor_utils
 
 def iou_single(pred_mask, gt_mask):
@@ -120,6 +119,8 @@ def segm_loss_match_hungarian(
                     [yolo_masks[pred_idx]], 
                     [all_pred_classes[pred_idx]], 
                     pred_masks.device,
+                    wt_threshold,
+                    wt_classes
                     )[0].detach().cpu().numpy())
             
         total_dice_loss += dice_loss
@@ -137,12 +138,17 @@ def segm_loss_match_hungarian(
     return total_loss, preds, gts, gt_classes, pred_classes, iou_scores_sam
 
 def segm_loss_match_iou_based(
+    use_yolo_masks,
 	pred_masks, 
 	gt_masks, 
 	all_pred_classes, 
 	all_gt_classes, 
 	model_iou_scores,
-    mask_areas):
+    mask_areas,
+    image=None,
+    yolo_masks=None,
+    wt_classes=None,
+    wt_threshold=None):
     
     # Compute IoU matrix for all pairs
     iou_matrix = compute_iou_matrix(pred_masks, gt_masks)  
@@ -152,7 +158,7 @@ def segm_loss_match_iou_based(
     # Compute loss for matched pairs
     total_dice_loss = 0
     total_focal_loss = 0
-    gt_classes, pred_classes, iou_scores_sam = [], [], []
+    gt_classes, pred_classes, iou_scores_sam, combined_preds = [], [], [], []
     for pred_idx in range(iou_matrix.shape[0]):
         # Find the ground truth mask with the highest IoU for each predicted mask
         iou_scores = iou_matrix[pred_idx]
@@ -168,13 +174,27 @@ def segm_loss_match_iou_based(
         if mask_areas is not None:
             total_dice_loss += (dice_loss * mask_areas[gt_idx]/sum(mask_areas)) # weighted loss given mask size
             total_focal_loss += (focal_loss * mask_areas[gt_idx]/sum(mask_areas)) # weighted loss given mask size
-
+        if use_yolo_masks:
+            if yolo_masks is not None and wt_threshold is not None and wt_classes is not None and image is not None:
+                combined_preds.append(predictor_utils.process_faint_masks(
+                    image, 
+                    [pred_masks[pred_idx]], 
+                    [yolo_masks[pred_idx]], 
+                    [all_pred_classes[pred_idx]], 
+                    pred_masks.device,
+                    wt_threshold,
+                    wt_classes
+                    )[0].detach().cpu().numpy())
+            
     # Normalize the losses
     mean_dice_loss = total_dice_loss / len(gts)
     mean_focal_loss = total_focal_loss / len(gts)
 
     # Combine losses
     total_loss = mean_dice_loss + 20 * mean_focal_loss
+    
+    if use_yolo_masks:
+        preds = combined_preds
 
     return total_loss, preds, gts, gt_classes, pred_classes, iou_scores_sam, new_mask_areas
 
