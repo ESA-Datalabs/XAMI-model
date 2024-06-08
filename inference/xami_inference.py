@@ -4,19 +4,17 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-
-from ultralytics import RTDETR
-from dataset import dataset_utils
-from sam_predictor import predictor_utils
 from ultralytics import YOLO, RTDETR
 from segment_anything.utils.transforms import ResizeLongestSide
 import tqdm
 import os
+from dataset import dataset_utils
+from sam_predictor import predictor_utils
 
 sys.path.append(os.path.join(os.getcwd(), 'mobile_sam'))
-from mobile_sam import sam_model_registry, SamPredictor
+from mobile_sam import sam_model_registry, SamPredictor # type: ignore
 
-class Xami:
+class InferXami:
   def __init__(self, device, detr_checkpoint, sam_checkpoint, model_type='vit_t', use_detr_masks=False):
     print("Initializing the model...")
 
@@ -32,7 +30,7 @@ class Xami:
     self.use_detr_masks = use_detr_masks # whether to use YOLO masks for faint sources
 
     # Step 1: Object detection
-    self.detector = YOLO(self.detr_checkpoint)
+    self.detector = RTDETR(self.detr_checkpoint)
     if self.use_detr_masks:
       self.detector = YOLO(self.detr_checkpoint)
       
@@ -84,12 +82,12 @@ class Xami:
     # set a specific mean for each image
     input_image = predictor_utils.set_mean_and_transform(image, self.mobile_sam_model, self.transform, self.device)
              
-    if len(obj_results[0]) == 0:
+    if len(obj_results[0]) == 0: # type: ignore
       print("No objects detected. Check model configuration or input image.")
       return None, None, (time.time()-start_time_all)*1000, 1
 
     predicted_classes = obj_results[0].boxes.cls
-    colours = [self.classes[i.item()][1] for i in predicted_classes]
+    colours = [self.classes[i.item()][1] for i in predicted_classes] # type: ignore
     boxes_numpy = obj_results[0].boxes.xyxy.cpu().numpy()
     input_boxes = self.sam_predictor.transform.apply_boxes(boxes_numpy, image.shape[:-1])
     input_boxes = torch.from_numpy(input_boxes).to(self.device)
@@ -148,7 +146,7 @@ class Xami:
         dataset_utils.visualize_titles(
           image_copy, 
           boxes_numpy[i], 
-          self.classes[predicted_classes[i].item()][0], 
+          self.classes[predicted_classes[i].item()][0],  # type: ignore
           font_thickness=1, 
           font_scale=0.35)
         
