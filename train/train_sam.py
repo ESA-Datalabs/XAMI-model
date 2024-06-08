@@ -22,9 +22,10 @@ np.random.seed(seed)
 torch.manual_seed(seed) 
 cudnn.benchmark, cudnn.deterministic = False, True
 
+# Ensure the project root is in the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
 from dataset import dataset_utils
-from sam_predictor import load_dataset, astro_sam, residualAttentionBlock, predictor_utils
+from sam_predictor import load_dataset, astro_sam, predictor_utils
 
 if len(sys.argv)==3:
     kfold_iter = int(sys.argv[1])
@@ -36,10 +37,12 @@ if len(sys.argv)==1:
 lr=3e-4
 wd=0.0005
 wandb_track=True
-num_epochs=50
+num_epochs=60
 use_lr_initial_decay=True
 n_epochs_stop = 15 # Early stopping
+use_CR = True # Use Consistency Regularization
 work_dir = './output_sam'
+input_dir = f'../data/xami_dataset/' # path to the dataset
 
 work_dir = predictor_utils.get_next_directory_name(work_dir)
 os.makedirs(work_dir)
@@ -47,6 +50,7 @@ print(f"Working directory: {work_dir}")
 
 # torch.cuda.set_device(device_id)
 device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
+print(f"Device: {device}")
 
 # this variable is the original batch size
 # the effective batch size will be: original_batch_size * (number of augmentations + 1) 
@@ -54,15 +58,11 @@ device = f"cuda:{device_id}" if torch.cuda.is_available() else "cpu"
 # high values (e.g., 8, 16) may lead to OOM errors
 batch_size=4
 
-print("DEVICE", device)
-
 # Load checkpoints
 mobile_sam_dir = os.path.join(os.getcwd(), '..', 'mobile_sam')
 mobile_sam_checkpoint = os.path.join(mobile_sam_dir,"weights/mobile_sam.pt")
 
 # Dataset split
-
-input_dir = f'../xami_dataset/'
 train_dir = input_dir+f'train/'
 valid_dir = input_dir+f'valid/'
 json_train_path, json_valid_path = train_dir+'_annotations.coco.json', valid_dir+'_annotations.coco.json'
@@ -83,8 +83,6 @@ train_gt_masks, train_bboxes, train_classes, train_class_categories = dataset_ut
 val_gt_masks, val_bboxes, val_classes, val_class_categories = dataset_utils.get_coords_and_masks_from_json(
     valid_dir, 
     valid_data) # type: ignore
-
-train_data_in['categories']
 
 # In[10]:
 
@@ -117,7 +115,7 @@ from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_
 model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
 model.to(device);
 predictor = SamPredictor(model)
-astrosam_model = astro_sam.AstroSAM(model, device, predictor) #, residualAttentionBlock)
+astrosam_model = astro_sam.AstroSAM(model, device, predictor, apply_segm_CR=use_CR) #, residualAttentionBlock)
 
 # # # Residual Attention Block
 # residual_block = residualAttentionBlock.ResidualAttentionBlock(d_model=768, n_head=8, mlp_ratio=4.0).to(device)
@@ -206,8 +204,6 @@ if use_lr_initial_decay:
 
 # Model weights
 print(f"🚀  The SAM model has {sum(p.numel() for p in astrosam_model.model.parameters() if p.requires_grad)} trainable parameters.\n")
-# print(f"🚀 The ResAttnBlock has {sum(p.numel() for p in astrosam_model.residualAttentionBlock.parameters() if p.requires_grad)} trainable parameters.\n")
-# predictor_utils.check_requires_grad(astrosam_model.model)
 
 # Run Training
 train_losses = []
@@ -253,6 +249,8 @@ print(f"🚀  Using learning rate initial decay scheduler: {use_lr_initial_decay
 print(f"🚀  Early stopping after {n_epochs_stop} epochs without improvement.")
 print(f"🚀  Training started.\n")
 
+iou_eval_thresholds = [0.5, 0.75, 0.9]
+    
 for epoch in range(num_epochs):
 
     # Train
@@ -260,7 +258,7 @@ for epoch in range(num_epochs):
     if astrosam_model.residualAttentionBlock is not None:
         astrosam_model.residualAttentionBlock.train()
 	
-    epoch_loss = astrosam_model.train_validate_step(
+    epoch_loss, _, _, _ = astrosam_model.train_validate_step(
         train_dataloader, 
         train_dir, 
         train_gt_masks, 
@@ -278,7 +276,7 @@ for epoch in range(num_epochs):
         astrosam_model.residualAttentionBlock.eval()
 	
     with torch.no_grad():
-        epoch_val_loss =  astrosam_model.train_validate_step(
+        epoch_val_loss, all_image_ids, all_gt_masks, all_pred_masks =  astrosam_model.train_validate_step(
             val_dataloader, 
             valid_dir, 
             val_gt_masks, 
@@ -288,11 +286,19 @@ for epoch in range(num_epochs):
             cr_transforms = None,
             scheduler=None)
             
-    valid_losses.append(epoch_val_loss)
-
+        valid_losses.append(epoch_val_loss)
+        p_metric_name, p_means, p_stds, p_thresholds = predictor_utils.compute_scores('precision', all_pred_masks, all_gt_masks, iou_eval_thresholds)
+        r_metric_name, r_means, r_stds, r_thresholds = predictor_utils.compute_scores('recall', all_pred_masks, all_gt_masks, iou_eval_thresholds)
+        f_metric_name, f_means, f_stds, f_thresholds = predictor_utils.compute_scores('f1_score', all_pred_masks, all_gt_masks, iou_eval_thresholds)
+        a_metric_name, a_means, a_stds, a_thresholds = predictor_utils.compute_scores('accuracy', all_pred_masks, all_gt_masks, iou_eval_thresholds)
+        print('Precision', p_means, 'Recall', r_means, 'F1-score', f_means, 'Accuracy', a_means)
+        del all_image_ids, all_gt_masks, all_pred_masks, p_metric_name, r_metric_name, f_metric_name, a_metric_name
+        del p_stds, p_thresholds, r_stds, r_thresholds, f_stds, f_thresholds, a_stds, a_thresholds
+        
     # Logging
     if wandb_track:
         wandb.log({'epoch training loss': epoch_loss, 'epoch validation loss': epoch_val_loss})
+        wandb.log({'Precision': p_means, 'Recall': r_means, 'F1-score': f_means, 'Accuracy': a_means})
 
     print(f'EPOCH: {epoch}. Training loss: {epoch_loss}')
     print(f'EPOCH: {epoch}. Validation loss: {epoch_val_loss}.')
@@ -325,7 +331,7 @@ if wandb_track:
     wandb.run.summary["num_epochs"] = num_epochs
     wandb.run.summary["learning rate"] = lr
     wandb.run.summary["weight_decay"] = wd
-    wandb.run.summary["# train images"] = len(train_dataloader)
-    wandb.run.summary["# validation images"] = len(val_dataloader)
+    wandb.run.summary["# train_dataloader"] = len(train_dataloader)
+    wandb.run.summary["# val_dataloader"] = len(val_dataloader)
     wandb.run.summary["checkpoint"] = mobile_sam_checkpoint
     run.finish()
