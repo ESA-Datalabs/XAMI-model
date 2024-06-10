@@ -22,10 +22,8 @@ np.random.seed(seed)
 torch.manual_seed(seed) 
 cudnn.benchmark, cudnn.deterministic = False, True
 
-# Ensure the project root is in the Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), '../'))
-from dataset import dataset_utils
-from sam_predictor import load_dataset, astro_sam, predictor_utils
+from xami_model.dataset import dataset_utils, load_dataset
+from xami_model.model_predictor import xami, predictor_utils
 
 if len(sys.argv)==3:
     kfold_iter = int(sys.argv[1])
@@ -108,14 +106,13 @@ val_gt_masks, val_bboxes, val_classes, val_class_categories = dataset_utils.get_
 # In[12]:
 
 import sys
-sys.path.append(mobile_sam_dir)
-from mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
+from xami_model.mobile_sam.mobile_sam import sam_model_registry, SamPredictor#, build_efficientvit_l2_encoder
 
 # Segment Anything Model
 model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
 model.to(device);
 predictor = SamPredictor(model)
-astrosam_model = astro_sam.AstroSAM(model, device, predictor, apply_segm_CR=use_CR) #, residualAttentionBlock)
+xami_model = xami.XAMI(model, device, predictor, apply_segm_CR=use_CR) #, residualAttentionBlock)
 
 # # # Residual Attention Block
 # residual_block = residualAttentionBlock.ResidualAttentionBlock(d_model=768, n_head=8, mlp_ratio=4.0).to(device)
@@ -146,7 +143,7 @@ astrosam_model = astro_sam.AstroSAM(model, device, predictor, apply_segm_CR=use_
 # for name, param in residual_block.named_parameters():
 #     param.requires_grad = True 
 
-# astrosam_model = astro_sam.AstroSAM(
+# xami_model = xami.XAMI(
 #     model, 
 #     device, 
 #     predictor, 
@@ -162,7 +159,7 @@ if wandb_track:
     import wandb
     wandb.login()
     run = wandb.init(project="sam", name=f"sam_{kfold_iter}_{datetime.now()}")
-    wandb.watch(astrosam_model.model, log='all', log_graph=True)
+    wandb.watch(xami_model.model, log='all', log_graph=True)
 
 ## Convert the input images into a format SAM's internal functions expect.
 import torch
@@ -170,20 +167,20 @@ from segment_anything.utils.transforms import ResizeLongestSide
 from torch.utils.data import DataLoader
 
 # Dataset Loaders and Pre-processing
-transform = ResizeLongestSide(astrosam_model.model.image_encoder.img_size)
-train_set = load_dataset.ImageDataset(training_image_paths, astrosam_model.model, transform, device) 
-val_set =  load_dataset.ImageDataset(val_image_paths, astrosam_model.model, transform, device) 
+transform = ResizeLongestSide(xami_model.model.image_encoder.img_size)
+train_set = load_dataset.ImageDataset(training_image_paths, xami_model.model, transform, device) 
+val_set =  load_dataset.ImageDataset(val_image_paths, xami_model.model, transform, device) 
 train_dataloader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
 val_dataloader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
 # Optimizer
-for name, param in astrosam_model.model.named_parameters():
+for name, param in xami_model.model.named_parameters():
     if 'mask_decoder' in name:
         param.requires_grad = True
     else:
         param.requires_grad = False
 
-parameters_to_optimize = [param for param in astrosam_model.model.parameters() if param.requires_grad]
+parameters_to_optimize = [param for param in xami_model.model.parameters() if param.requires_grad]
 optimizer = torch.optim.AdamW(parameters_to_optimize, lr=lr, weight_decay=wd) 
 
 # Scheduler
@@ -203,7 +200,7 @@ if use_lr_initial_decay:
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
 # Model weights
-print(f"🚀  The SAM model has {sum(p.numel() for p in astrosam_model.model.parameters() if p.requires_grad)} trainable parameters.\n")
+print(f"🚀  The SAM model has {sum(p.numel() for p in xami_model.model.parameters() if p.requires_grad)} trainable parameters.\n")
 
 # Run Training
 train_losses = []
@@ -242,7 +239,7 @@ if len(cr_transforms) > 0:
 
 # Intro
 
-print(f"🚀  Training {astrosam_model.model.__class__.__name__} with {len(training_image_paths)} training images and {len(val_image_paths)} validation images.")
+print(f"🚀  Training {xami_model.model.__class__.__name__} with {len(training_image_paths)} training images and {len(val_image_paths)} validation images.")
 print(f"🚀  Training for {num_epochs} epochs with effective batch size {batch_size * (len(cr_transforms) + 1)} and learning rate {lr}.")
 print(f"🚀  Initial learning rate: {lr}. Weight decay: {wd}.")
 print(f"🚀  Using learning rate initial decay scheduler: {use_lr_initial_decay}. ")
@@ -254,11 +251,11 @@ iou_eval_thresholds = [0.5, 0.75, 0.9]
 for epoch in range(num_epochs):
 
     # Train
-    astrosam_model.model.train()
-    if astrosam_model.residualAttentionBlock is not None:
-        astrosam_model.residualAttentionBlock.train()
+    xami_model.model.train()
+    if xami_model.residualAttentionBlock is not None:
+        xami_model.residualAttentionBlock.train()
 	
-    epoch_loss, _, _, _ = astrosam_model.train_validate_step(
+    epoch_loss, _, _, _ = xami_model.train_validate_step(
         train_dataloader, 
         train_dir, 
         train_gt_masks, 
@@ -271,12 +268,12 @@ for epoch in range(num_epochs):
     train_losses.append(epoch_loss)
     
     # Validate
-    astrosam_model.model.eval()
-    if astrosam_model.residualAttentionBlock is not None:
-        astrosam_model.residualAttentionBlock.eval()
+    xami_model.model.eval()
+    if xami_model.residualAttentionBlock is not None:
+        xami_model.residualAttentionBlock.eval()
 	
     with torch.no_grad():
-        epoch_val_loss, all_image_ids, all_gt_masks, all_pred_masks =  astrosam_model.train_validate_step(
+        epoch_val_loss, all_image_ids, all_gt_masks, all_pred_masks =  xami_model.train_validate_step(
             val_dataloader, 
             valid_dir, 
             val_gt_masks, 
@@ -306,8 +303,8 @@ for epoch in range(num_epochs):
     if epoch_val_loss < best_valid_loss:
         best_valid_loss = epoch_val_loss
         best_epoch = epoch
-        best_model = astrosam_model.model
-        best_residual_attn = astrosam_model.residualAttentionBlock
+        best_model = xami_model.model
+        best_residual_attn = xami_model.residualAttentionBlock
         epochs_no_improve = 0
     else:
         epochs_no_improve += 1
@@ -320,7 +317,7 @@ for epoch in range(num_epochs):
     torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_best.pth')
                 
 torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_best.pth')
-torch.save(astrosam_model.model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_last.pth')
+torch.save(xami_model.model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_last.pth')
 if best_residual_attn is not None:
     torch.save(best_residual_attn.state_dict(), f'{work_dir}/residual_attn_blk_{kfold_iter}_{datetime.now()}_best.pth')
 

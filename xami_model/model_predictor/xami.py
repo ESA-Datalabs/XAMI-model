@@ -38,7 +38,7 @@ cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, Fa
 
 # torch.autograd.set_detect_anomaly(True)
 
-class AstroSAM:
+class XAMI:
     def __init__(
         self,  
         model, 

@@ -9,7 +9,7 @@ from segment_anything.utils.transforms import ResizeLongestSide
 import tqdm
 import os
 from ..dataset import dataset_utils
-from ..sam_predictor import predictor_utils
+from ..model_predictor import predictor_utils
 from ..mobile_sam.mobile_sam import sam_model_registry, SamPredictor 
 
 class InferXami:
@@ -34,7 +34,7 @@ class InferXami:
       
     self.detector.to(self.device)
     # Step 2: Instance segmentation with SAM on detected objects
-    self.mobile_sam_model, self.sam_predictor = self.load_sam_model(model_type)
+    self.mobile_sam_model, self.model_predictor = self.load_sam_model(model_type)
     self.transform = ResizeLongestSide(self.mobile_sam_model.image_encoder.img_size)
     
     # Warmup is beneficial for completing system-level optimizations
@@ -87,7 +87,7 @@ class InferXami:
     predicted_classes = obj_results[0].boxes.cls
     colours = [self.classes[i.item()][1] for i in predicted_classes] # type: ignore
     boxes_numpy = obj_results[0].boxes.xyxy.cpu().numpy()
-    input_boxes = self.sam_predictor.transform.apply_boxes(boxes_numpy, image.shape[:-1])
+    input_boxes = self.model_predictor.transform.apply_boxes(boxes_numpy, image.shape[:-1])
     input_boxes = torch.from_numpy(input_boxes).to(self.device)
     sam_mask = []
     if self.use_detr_masks:
@@ -104,7 +104,7 @@ class InferXami:
       escape_code = f'\x1b[48;2;{rgb[0]};{rgb[1]};{rgb[2]}m \x1b[0m'
       print(escape_code+escape_code, self.classes[predicted_class.item()][0], end='\n')
         
-    low_res_masks=self.sam_predictor.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
+    low_res_masks=self.model_predictor.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
     
     if self.use_detr_masks:
       low_res_masks = predictor_utils.process_faint_masks(
@@ -208,12 +208,12 @@ class InferXami:
         print("No objects detected. Check model configuration or input image.")
         return None
       
-      input_boxes = self.sam_predictor.transform.apply_boxes(boxes_numpy, image.shape[:-1])
+      input_boxes = self.model_predictor.transform.apply_boxes(boxes_numpy, image.shape[:-1])
       input_boxes = torch.from_numpy(input_boxes).to(self.device)
       sam_mask = []
      
       low_res_masks, iou_predictions = self.run_sam_model(input_image, input_boxes)
-      low_res_masks=self.sam_predictor.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
+      low_res_masks=self.model_predictor.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
       
       # Apply Gaussian filter on logits
       kernel_size, sigma = 5, 2

@@ -2,11 +2,6 @@ from ultralytics import YOLO, RTDETR
 import sys
 import os
 
-# Append project path when running in CLI
-relative_project_path = os.path.join(os.path.dirname(__file__), '../')
-sys.path.append(relative_project_path)
-print('Project path:', relative_project_path)
-
 if len(sys.argv) ==1:
     iter = 0
 elif len(sys.argv) == 2:

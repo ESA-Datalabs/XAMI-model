@@ -3,7 +3,7 @@ from scipy.optimize import linear_sum_assignment
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from ..sam_predictor import predictor_utils
+from ..model_predictor import predictor_utils
 
 def iou_single(pred_mask, gt_mask):
     """Compute IoU between a single predicted mask and a single ground truth mask."""
