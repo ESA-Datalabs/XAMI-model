@@ -44,25 +44,21 @@ huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type d
 After cloning the repository and setting up the environment, use the following Python code for model loading and inference:
 
 ```python
-import sys
-from inference.xami_inference import Xami
+ifrom xami_model.inference.xami_inference import InferXami
 
-detr_checkpoint = './train/weights/yolo_weights/yolov8_detect_300e_best.pt'
-sam_checkpoint = './train/weights/sam_weights/sam_0_best.pth'
+detr_checkpoint = './xami_model/train/rt-detr-iter0/rtdetr-l4/weights/last.pt'
+# detr_checkpoint = './train/yolov8-segm-0/yolov8n-seg6/weights/best.pt'
+sam_checkpoint = './xami_model/train/output_sam_8/sam_0_2024-06-05 13:08:02.871454_best.pth'
 
 # the SAM checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
-detr_sam_pipeline = Xami(
+detr_sam_pipeline = InferXami(
     device='cuda:0',
-    detr_checkpoint=detr_checkpoint, #YOLO(detr_checkpoint)
+    detr_checkpoint=detr_checkpoint,
     sam_checkpoint=sam_checkpoint,
     model_type='vit_t',
-    use_detr_masks=True)
-    
-# prediction example
-masks = yolo_sam_pipeline.run_predict(
-    './example_images/S0743200101_V.jpg', 
-    yolo_conf=0.2, 
-    show_masks=True)
+    use_detr_masks=False)
+
+masks = detr_sam_pipeline.run_predict('./example_images/S0893811101_M.png', show_masks=True)
 ```
 
 ## 🚀 Training the model
