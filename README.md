@@ -18,6 +18,9 @@ cd XAMI-model
 # creating the environment
 conda env create -f environment.yaml
 conda activate xami_model_env
+
+# Install the package in editable mode
+pip install -e .
 ```
 
 ## 📊 Downloading the dataset and model checkpoints from HuggingFace🤗
