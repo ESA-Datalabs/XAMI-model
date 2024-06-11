@@ -1,6 +1,6 @@
 import cv2
 from torch.utils.data import Dataset
-from . import predictor_utils
+from ..model_predictor import predictor_utils
 
 class ImageDataset(Dataset):
     def __init__(self, image_paths, model, transform, device):

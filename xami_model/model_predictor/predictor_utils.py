@@ -185,7 +185,7 @@ def compute_iou(mask1, mask2):
     """Compute Intersection over Union of two binary masks."""
     intersection = np.logical_and(mask1, mask2)
     union = np.logical_or(mask1, mask2)
-    iou_score = np.sum(intersection) / np.sum(union)
+    iou_score = np.sum(intersection) / np.sum(union) if np.sum(union) > 0 else 0
     return iou_score
 
 def compute_metrics(gt_masks, pred_masks, iou_threshold, image=None):
@@ -555,3 +555,45 @@ def convert_tensors(data):
         return data.tolist() if data.ndim > 0 else data.item()
     else:
         return data
+    
+def compute_indiv_metrics(pred_mask, gt_mask, iou_threshold=0.5):
+    """Compute precision, recall, F1 score, and accuracy for aligned predicted and ground truth masks."""
+    iou = compute_iou(pred_mask, gt_mask)
+    if iou >= iou_threshold:
+        true_positive = np.logical_and(pred_mask, gt_mask).sum()
+        false_positive = np.logical_and(pred_mask, np.logical_not(gt_mask)).sum()
+        false_negative = np.logical_and(np.logical_not(pred_mask), gt_mask).sum()
+        precision = true_positive / (true_positive + false_positive) if (true_positive + false_positive) > 0 else 0
+        recall = true_positive / (true_positive + false_negative) if (true_positive + false_negative) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        accuracy = true_positive / gt_mask.sum() if gt_mask.sum() > 0 else 0
+    else:
+        precision = 0
+        recall = 0
+        f1 = 0
+        accuracy = 0
+
+    metrics = {
+        'iou': iou,
+        'precision': precision,
+        'recall': recall,
+        'f1_score': f1,
+        'accuracy': accuracy
+    }
+    return metrics
+
+def compute_scores(metric_name, all_pred_masks, all_gt_masks, thresholds):
+    means = []
+    stds = []
+    for threshold in thresholds:
+        all_metrics = []
+        for i, (pred_mask, gt_mask) in enumerate(zip(all_pred_masks, all_gt_masks)):
+            for mask_i in range(gt_mask.shape[0]):
+                metrics = compute_indiv_metrics(pred_mask[mask_i].detach().cpu().numpy(), gt_mask[mask_i].detach().cpu().numpy(), iou_threshold=threshold)
+                if metrics is not None:
+                    all_metrics.append(metrics)
+        values = [m[metric_name] for m in all_metrics]
+        means.append(np.mean(values))
+        stds.append(np.std(values))
+    
+    return metric_name, np.array(means), np.array(stds)

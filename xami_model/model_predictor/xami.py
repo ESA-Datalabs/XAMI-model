@@ -17,26 +17,13 @@ from ..dataset import dataset_utils
 from . import predictor_utils
 from ..yolo_predictor import yolo_predictor_utils
 
-# ensuring reproducibility
+# for reproducibility
 seed=0
 import torch.backends.cudnn as cudnn 
 random.seed(seed) 
 np.random.seed(seed) 
 torch.manual_seed(seed) 
 cudnn.benchmark, cudnn.deterministic = (False, True) if seed == 0 else (True, False) 
-
-# import sys
-# import warnings
-# import traceback
-
-# def warn_with_traceback(message, category, filename, lineno, file=None, line=None):
-#     log = file if hasattr(file, 'write') else sys.stderr
-#     traceback.print_stack(file=log)
-#     log.write(warnings.formatwarning(message, category, filename, lineno, line))
-
-# warnings.showwarning = warn_with_traceback
-
-# torch.autograd.set_detect_anomaly(True)
 
 class XAMI:
     def __init__(
@@ -76,7 +63,7 @@ class XAMI:
         original_image_size, 
         input_size, 
         input_image, 
-        cr_transforms=None, 
+        cr_transforms=[], 
         show_plot=True):
 
         boxes = []
@@ -123,7 +110,7 @@ class XAMI:
      
         # Augmentation
         transformed_losses, cr_loss = [], None
-        if cr_transforms is not None:
+        if len(cr_transforms)>0:
             transformed_losses, cr_loss = self.augment_with_predict(
                 cr_transforms, 
                 input_image, 
@@ -140,40 +127,10 @@ class XAMI:
                 image_loss += transformed_losses[i]
             if cr_loss is not None:
                 image_loss += cr_loss
-                
-        # if show_plot:
-        #     for i in range(threshold_masks.shape[0]):
-        #         fig, axs = plt.subplots(1, 3, figsize=(40, 20))
-        #         axs[0].imshow(threshold_masks.permute(1, 0, 2, 3)[0][i].detach().cpu().numpy())
-        #         axs[0].set_title(f'gt iou:{ious[i].item()}, \n'+\
-        #                 f'pred iou: {iou_predictions[i].item()}\n img: {iou_image_loss[i].item()}\n {image_loss.item()}', fontsize=30)
-                    
-        #         axs[1].imshow(gt_threshold_masks[i].detach().cpu().numpy())
-        #         axs[1].set_title(f'GT masks', fontsize=40)
-                
-        #         axs[2].imshow(pred_masks[i][0].detach().cpu().numpy())
-        #         axs[2].set_title(f'Predicted mask', fontsize=30)
-            
-        #         plt.show()
-        #         plt.close()
-        #     fig, axs = plt.subplots(1, 3, figsize=(40, 20))
-        #     axs[0].imshow(input_image)
-        #     axs[0].set_title(f'{k.split(".")[0]}', fontsize=40)
-            
-        #     axs[1].imshow(input_image) 
-        #     dataset_utils.show_masks(gt_threshold_masks.detach().cpu().numpy(), axs[1], random_color=False)
-        #     axs[1].set_title(f'GT masks ', fontsize=40)
-            
-        #     axs[2].imshow(input_image) 
-        #     dataset_utils.show_masks(threshold_masks.permute(1, 0, 2, 3)[0].detach().cpu().numpy(), axs[2], random_color=False)
-        #     axs[2].set_title('Pred masks', fontsize=40)
-        #     # plt.savefig(f'./{k.split(".")[0]}_masks.png')
-        #     plt.show()
-        #     plt.close()
-            
+     
         # del threshold_masks
-        del iou_predictions 
-        # del pred_masks, gt_threshold_masks
+        del iou_predictions, pred_masks
+        # del gt_threshold_masks
         del rle_to_mask
         torch.cuda.empty_cache()
         
@@ -277,7 +234,6 @@ class XAMI:
             #     plt.show()
             #     plt.close()
 
-            # del threshold_masks
             del iou_predictions 
             del pred_masks, gt_threshold_masks
             torch.cuda.empty_cache()
@@ -292,7 +248,7 @@ class XAMI:
         gt_bboxes, 
         optimizer, 
         mode,
-        cr_transforms = None,
+        cr_transforms=[],
         scheduler=None,
         ):
         
@@ -318,16 +274,23 @@ class XAMI:
                 # RUN PREDICTION ON IMAGE
                 if len(image_masks)>0:
                     if mode == 'validate':
-                        with torch.no_grad():
-                            image_loss, gt_threshold_masks, pred_masks = self.one_image_predict(mode, image_masks, gt_masks, gt_bboxes, image_embedding,
-                                                                                                original_image_size, input_size, image, cr_transforms)
-                            batch_loss = batch_loss+image_loss
-                            all_gt_masks.append(gt_threshold_masks)
-                            all_pred_masks.append(pred_masks)
-                            all_image_ids.append(inputs['image_id'][i])
+                        image_loss, gt_threshold_masks, pred_masks = self.one_image_predict(
+                            mode, 
+                            image_masks, 
+                            gt_masks, 
+                            gt_bboxes, 
+                            image_embedding,
+                            original_image_size, 
+                            input_size, 
+                            image, 
+                            cr_transforms)
+                        batch_loss = batch_loss+image_loss
+                        all_gt_masks.append(gt_threshold_masks)
+                        all_pred_masks.append(pred_masks)
+                        all_image_ids.append(inputs['image_id'][i])
                     if mode == 'train':
-                            batch_loss = batch_loss+(self.one_image_predict(mode, image_masks, gt_masks, gt_bboxes, image_embedding, 
-                                                                original_image_size, input_size, image, cr_transforms))
+                        batch_loss = batch_loss+(self.one_image_predict(mode, image_masks, gt_masks, gt_bboxes, image_embedding, 
+                                                            original_image_size, input_size, image, cr_transforms))
                 else:
                     processed_images -=1
                     
@@ -453,7 +416,7 @@ class XAMI:
                 all_mask_areas.append(mask_areas)
                 pred_images.append(image_name)
                 
-                batch_losses_sam.append(segm_loss_sam) #+iou_image_loss)
+                batch_losses_sam.append(segm_loss_sam)
                 del sparse_embeddings, dense_embeddings, image_embedding
                 del segm_loss_sam, threshold_masks, pred_masks, sam_mask_pre
                 torch.cuda.empty_cache()
@@ -528,7 +491,16 @@ class XAMI:
         
         return residual_image_embedding
 
-    def augment_with_predict(self, cr_transforms, input_image, gt_numpy_bboxes, masks, original_image_size, input_size, threshold_masks, apply_CR=True):
+    def augment_with_predict(
+        self, 
+        cr_transforms, 
+        input_image, 
+        gt_numpy_bboxes, 
+        masks, 
+        original_image_size, 
+        input_size, 
+        threshold_masks, 
+        apply_CR=True):
         
         transformed_losses = []
         cr_CE_loss = None

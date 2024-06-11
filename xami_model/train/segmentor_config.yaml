@@ -1,0 +1,16 @@
+cuda_visible_devices: 0, 1, 2, 3
+device_id: 1
+final_lr: 6e-5
+initial_batch_size: 4
+input_dir: ./data/xami_dataset/
+kfold_iter: 0
+learning_rate: 3e-4
+mobile_sam_checkpoint: ./xami_model/train/weights/sam_weights/original_mobile_sam.pt
+n_epochs_stop: 15
+num_epochs: 60
+total_steps: 16
+use_CR: true
+use_lr_initial_decay: true
+wandb_track: true
+weight_decay: 0.0005
+work_dir: ./output_sam
