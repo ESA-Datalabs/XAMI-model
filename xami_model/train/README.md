@@ -1,22 +1,5 @@
 # XAMI model training
 
+The XAMI model integrates two key components: a detector (based on YOLO or RT-DETR models) and a segmentor which relies on the SAM architecture. For optimal performance, we train these components separately. This approach allows for dedicated training of the detector and the segmentor, followed by combined training where the detector's layers are frozen.
 
-### Train YOLOv8 layers
-
-Check [run_yolo_train_splits.sh](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/run_yolo_train_splits.sh) and [train_detector.py](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/train_detector.py) on how to train the YOLO model. 
-
-```bash
-./run_yolo_train_splits.sh
-```
-
-### Train SAM layers
-
-Check [run_sam_train_splits.sh](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/run_sam_train_splits.sh) and [train_sam.py](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/train_sam.py).
-
-```bash
-./run_sam_train_splits.sh
-```
-
-### Train YOLOv8 and SAM together
-
-See [train_yolo_sam.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/train_yolo_sam.ipynb) for how to couple the models to train SAM layers with predicted YOLO bounding boxes and compute metrics. 
+The [individual_train.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/xami_model/train/inidividual_train.ipynb) notebook provides step-by-step instructions on how to **train these models separately** using various configurations. These steps can be skipped if you plan to use the pre-trained checkpoints. The [combined_train.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/xami_model/train/train_combined.ipynb) notebook shows how to train the segmentor using detector-generated bounding boxes.
