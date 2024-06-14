@@ -46,9 +46,8 @@ After cloning the repository and setting up the environment, use the following P
 ```python
 from xami_model.inference.xami_inference import InferXami
 
-detr_checkpoint = './xami_model/train/rt-detr-iter0/rtdetr-l4/weights/last.pt'
-# detr_checkpoint = './train/yolov8-segm-0/yolov8n-seg6/weights/best.pt'
-sam_checkpoint = './xami_model/train/output_sam_8/sam_0_2024-06-05 13:08:02.871454_best.pth'
+detr_checkpoint = './xami_model/train/weights/yolo_weights/last.pt'
+sam_checkpoint = './xami_model/train/weights/sam_weights/sam_0_best.pt'
 
 # the SAM checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
 detr_sam_pipeline = InferXami(
