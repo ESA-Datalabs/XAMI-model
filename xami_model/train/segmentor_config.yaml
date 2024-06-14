@@ -1,16 +1,17 @@
-cuda_visible_devices: 0, 1, 2, 3
-device_id: 1
-final_lr: 6e-5
-initial_batch_size: 4
-input_dir: ./data/xami_dataset/
-kfold_iter: 0
-learning_rate: 3e-4
-mobile_sam_checkpoint: ./xami_model/train/weights/sam_weights/original_mobile_sam.pt
-n_epochs_stop: 15
+cuda_visible_devices: 0, 1, 2, 3 # when working with multiple GPUs, specify the GPU ids to use
+model_type: vit_t # SAM model type, either vit_t, vit_b, etc.. (it must be compatible with the checkpoint)
+device_id: 3
+final_lr: 6e-5 # final learning rate after total_steps steps
+initial_batch_size: 4 # batch size for training before augmentations are applied in the training loop
+input_dir: ./xami_dataset_zip/xami_dataset_coco/
+kfold_iter: 0 # relevant only when working with folds, this is the fold number for kfold cross validation
+learning_rate: 3e-4 # initial learning rate, before decreasing after total_steps steps
+mobile_sam_checkpoint: ./weights/sam_weights/original_mobile_sam.pt
+n_epochs_stop: 15 # early stopping after n_epochs_stop epochs without improvement
 num_epochs: 60
-total_steps: 16
-use_CR: true
+total_steps: 16 # number of steps for decreasing learning rate
+use_CR: true # use consistency regularization for masks
 use_lr_initial_decay: true
 wandb_track: true
 weight_decay: 0.0005
-work_dir: ./output_sam
+work_dir: ./output_sam # output directory for the model
