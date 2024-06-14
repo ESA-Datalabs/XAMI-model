@@ -44,7 +44,7 @@ huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type d
 After cloning the repository and setting up the environment, use the following Python code for model loading and inference:
 
 ```python
-ifrom xami_model.inference.xami_inference import InferXami
+from xami_model.inference.xami_inference import InferXami
 
 detr_checkpoint = './xami_model/train/rt-detr-iter0/rtdetr-l4/weights/last.pt'
 # detr_checkpoint = './train/yolov8-segm-0/yolov8n-seg6/weights/best.pt'
