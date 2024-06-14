@@ -40,7 +40,6 @@ def main(config):
     wandb_track = config['wandb_track']
     num_epochs = int(config['num_epochs'])
     use_lr_initial_decay = config['use_lr_initial_decay']
-    use_on_plateau_lr_sched = config['use_on_plateau_lr_sched']
     n_epochs_stop = int(config['n_epochs_stop'])
     use_CR = config['use_CR']
     work_dir = config['work_dir']
@@ -49,7 +48,8 @@ def main(config):
     # If the effective batch_size is bigger than 8, the model may run into OOM errors due to allocation of memory
     batch_size = int(config['initial_batch_size'])
     mobile_sam_checkpoint = config['mobile_sam_checkpoint']
-    
+    model_type = config['model_type']
+    the_time = datetime.now()
     # Create working directory
     work_dir = predictor_utils.get_next_directory_name(work_dir)
     os.makedirs(work_dir)
@@ -81,7 +81,7 @@ def main(config):
         valid_dir, valid_data)
 
     # Initialize model
-    model = sam_model_registry["vit_t"](checkpoint=mobile_sam_checkpoint)
+    model = sam_model_registry[model_type](checkpoint=mobile_sam_checkpoint)
     model.to(device)
     predictor = SamPredictor(model)
     xami_model_instance = xami.XAMI(model, device, predictor, apply_segm_CR=use_CR)
@@ -89,7 +89,7 @@ def main(config):
     if wandb_track:
         import wandb
         wandb.login()
-        run = wandb.init(project="sam", name=f"sam_{kfold_iter}_{datetime.now()}")
+        run = wandb.init(project="sam", name=f"sam_{kfold_iter}_{the_time}")
         wandb.watch(xami_model_instance.model, log='all', log_graph=True)
 
     # Prepare data loaders
@@ -199,14 +199,12 @@ def main(config):
             epochs_no_improve += 1
             if epochs_no_improve == n_epochs_stop:
                 print("Early stopping initiated.")
-                early_stop = True
                 break
         
         print(f"Best epoch: {best_epoch}. Best validation loss: {best_valid_loss}.\n")
-        torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_best.pth')
+        torch.save(best_model.state_dict(), f'{work_dir}/sam_best.pth')
                     
-    torch.save(best_model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_best.pth')
-    torch.save(xami_model_instance.model.state_dict(), f'{work_dir}/sam_{kfold_iter}_{datetime.now()}_last.pth')
+    torch.save(xami_model_instance.model.state_dict(), f'{work_dir}/sam_last.pth')
 
     if wandb_track:
         wandb.run.summary["batch_size"] = batch_size * (len(cr_transforms) + 1)
