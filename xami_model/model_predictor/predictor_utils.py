@@ -61,8 +61,8 @@ def check_requires_grad(model, show=True):
 def prints_and_wandb(epoch, epoch_sam_loss_train, epoch_sam_loss_val, all_metrics, metric_thresholds, wandb=None):  
     
     for metric in metric_thresholds:
-        train_map = np.round(all_metrics[tuple(metric)]['train']['map']*100, 1)
-        valid_map = np.round(all_metrics[tuple(metric)]['valid']['map']*100, 1)
+        train_map = all_metrics[tuple(metric)]['train']['map']*100
+        valid_map = all_metrics[tuple(metric)]['valid']['map']*100
         print(f"Train mAP{metric}: {train_map}. Valid mAP{metric}: {valid_map}")
         
         if wandb is not None:
@@ -75,7 +75,7 @@ def prints_and_wandb(epoch, epoch_sam_loss_train, epoch_sam_loss_val, all_metric
     if wandb is not None:
         wandb.log({'train_SAM_loss': np.round(epoch_sam_loss_train, 7), 'valid_SAM_loss': np.round(epoch_sam_loss_val, 7)})
         
-def print_training_intro(train_dir_list, valid_dir_list, device, metric_thresholds, num_epochs, batch_size, lr, wd, wandb_track, model, optimizer_name):
+def print_training_intro(train_dir_list, valid_dir_list, device, num_epochs, batch_size, lr, wd, wandb_track, model, optimizer_name):
 
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     color_start = "\033[1;36m"  
@@ -89,7 +89,6 @@ def print_training_intro(train_dir_list, valid_dir_list, device, metric_threshol
     print(f" - Learning Rate: {lr}")
     print(f" - Weight Decay: {wd}")
     print(f" - Device: {device}")
-    print(f" - mAP thresholds: {metric_thresholds}")
     print(f" - Early Stopping: Stop if no improvement after {num_epochs // 10 + 5} epochs.")
     print(f" - Weights & Biases Tracking: {'Enabled' if wandb_track else 'Disabled'}.")
     print(f" - Optimizer: {optimizer_name}.")
@@ -408,8 +407,8 @@ def SAM_predictor(AMG, sam, IMAGE_PATH, mask_on_negative = None, img_grid_points
                                             remove_big_masks=True, 
                                             img_shape = image_rgb.shape)
 
-    blue_color = sv.Color(0, 255, 0)
-    mask_annotator = sv.MaskAnnotator(color=blue_color, color_lookup=None)
+    color = sv.Color(0, 255, 0)
+    mask_annotator = sv.MaskAnnotator(color=color, color_lookup=None)
     detections = sv.Detections.from_sam(sam_result=sam_result)
     image_rgb = 255 - image_rgb
     annotated_image = mask_annotator.annotate(scene=image_rgb.copy(), detections=detections)
@@ -597,3 +596,111 @@ def compute_scores(metric_name, all_pred_masks, all_gt_masks, thresholds):
         stds.append(np.std(values))
     
     return metric_name, np.array(means), np.array(stds)
+
+def plot_conf_m(
+    self,
+    save_path=None,
+    title=None,
+    classes= None,
+    normalize=False,
+    fig_size=(12, 10)):
+
+    array = self.matrix.copy()
+
+    if normalize:
+        eps = 1e-8
+        array = array / (array.sum(0).reshape(1, -1) + eps)
+
+    array[array < 0.005] = np.nan
+
+    fig, ax = plt.subplots(figsize=fig_size, tight_layout=True, facecolor="white")
+
+    class_names = classes if classes is not None else self.classes
+    use_labels_for_ticks = class_names is not None and (0 < len(class_names) < 99)
+    if use_labels_for_ticks:
+        x_tick_labels = class_names + ["Background"]
+        y_tick_labels = class_names + ["Background"]
+        num_ticks = len(x_tick_labels)
+    else:
+        x_tick_labels = None
+        y_tick_labels = None
+        num_ticks = len(array)
+    im = ax.imshow(array, cmap="Blues")
+
+    cbar = ax.figure.colorbar(im, ax=ax)
+    cbar.mappable.set_clim(vmin=0, vmax=np.nanmax(array))
+
+    if x_tick_labels is None:
+        tick_interval = 2
+    else:
+        tick_interval = 1
+    ax.set_xticks(np.arange(0, num_ticks, tick_interval), labels=x_tick_labels)
+    ax.set_yticks(np.arange(0, num_ticks, tick_interval), labels=y_tick_labels)
+
+    plt.setp(ax.get_xticklabels(), rotation=90, ha="right", rotation_mode="default")
+
+    labelsize = 10 if num_ticks < 50 else 8
+    ax.tick_params(axis="both", which="both", labelsize=labelsize)
+
+    if num_ticks < 30:
+        for i in range(array.shape[0]):
+            for j in range(array.shape[1]):
+                n_preds = array[i, j]
+                if not np.isnan(n_preds):
+                    ax.text(
+                        j,
+                        i,
+                        f"{n_preds:.2f}" if normalize else f"{n_preds:.0f}",
+                        ha="center",
+                        va="center",
+                        color="black"
+                        if n_preds < 0.5 * np.nanmax(array)
+                        else "white",
+                    )
+
+    if title:
+        ax.set_title(title, fontsize=20)
+
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("True")
+    ax.set_facecolor("white")
+    if save_path:
+        fig.savefig(
+            save_path, dpi=250, facecolor=fig.get_facecolor(), transparent=True
+        )
+    return fig
+
+def is_corner_zero_pixels(image, threshold=0.8, corner_size=20):
+    height, width = image.shape[:2]
+
+    # Define corner regions
+    corners = [
+        image[:corner_size, :corner_size],  # Top-left
+        image[:corner_size, -corner_size:],  # Top-right
+        image[-corner_size:, :corner_size],  # Bottom-left
+        image[-corner_size:, -corner_size:],  # Bottom-right
+    ]
+
+    # Check if 80% of the pixels in the corners are zero
+    for corner in corners:
+        if np.mean(corner == 0) < threshold:
+            return False
+    return True
+
+def mask_in_corner_region(mask, image_shape, threshold=0.2, corner_size=20):
+    height, width = image_shape[:2]
+
+    # Define corner regions
+    corners_masks = [
+        mask[:corner_size, :corner_size],  # Top-left
+        mask[:corner_size, -corner_size:],  # Top-right
+        mask[-corner_size:, :corner_size],  # Bottom-left
+        mask[-corner_size:, -corner_size:],  # Bottom-right
+    ]
+
+    total_mask_pixels = torch.sum(mask)
+    for corner_mask in corners_masks:
+        corner_pixels = torch.sum(corner_mask)
+        if corner_pixels / total_mask_pixels >= threshold:
+            return True
+    return False

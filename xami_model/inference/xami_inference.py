@@ -13,7 +13,7 @@ from ..model_predictor import predictor_utils
 from ..mobile_sam.mobile_sam import sam_model_registry, SamPredictor 
 
 class InferXami:
-  def __init__(self, device, detr_checkpoint, sam_checkpoint, model_type='vit_t', use_detr_masks=False):
+  def __init__(self, device, detr_checkpoint, sam_checkpoint, model_type='vit_t', use_detr_masks=False, detr_type='yolo'):
     print("Initializing the model...")
 
     self.device = device
@@ -26,11 +26,19 @@ class InferXami:
                     4:('star-loop', (255, 188, 248))}
 
     self.use_detr_masks = use_detr_masks # whether to use YOLO masks for faint sources
-
+    
     # Step 1: Object detection
-    self.detector = RTDETR(self.detr_checkpoint)
-    if self.use_detr_masks:
+    if detr_type == 'yolo':
       self.detector = YOLO(self.detr_checkpoint)
+      if self.use_detr_masks==True:
+        print("Using YOLO masks for faint (1sigma) sources.")
+    elif detr_type == 'rt_detr':
+      self.detector = RTDETR(self.detr_checkpoint)
+      if self.use_detr_masks==True:
+        print("RT-DETR doesn't currently support masks generation. We will set use_detr_masks=False.")
+        self.use_detr_masks=False
+    else:
+      print("Invalid DETR type. Please choose either 'yolo' or 'rt_detr'.")      
       
     self.detector.to(self.device)
     # Step 2: Instance segmentation with SAM on detected objects
@@ -146,7 +154,7 @@ class InferXami:
           boxes_numpy[i], 
           self.classes[predicted_classes[i].item()][0],  # type: ignore
           font_thickness=1, 
-          font_scale=0.35)
+          font_scale=1.0)
         
       axes[1].imshow(image_copy)
       for i in range (len(boxes_numpy)):
