@@ -13,12 +13,12 @@ yolo_dataset_path = f"./xami_dataset_zip/xami_dataset_yolov8/" # replace with pa
 data_yaml_path = yolo_dataset_path+'data.yaml'
 device = 2
 
-model_type = 'yolov8'
+model_type = 'yolov8' # 'yolov8' or 'rt-detr'
 
 if model_type == 'yolov8':
         
     # Train YOLOv8-segm
-    model_checkpoint = 'yolov8l-seg.pt'
+    model_checkpoint = 'yolov8n-seg.pt'
     model = YOLO(model_checkpoint) 
 
     project = f"yolov8-segm-{iter}" 
@@ -63,7 +63,7 @@ if model_type=='rt-detr':
                         imgsz=512,
                         device=0,
                         hsv_h=0.0, hsv_s=0.0, hsv_v=0.0,
-                        lr0=0.0006/2,
+                        lr0=0.0006, #/2
                         dropout=0.2,
                         mask_ratio = 1,
                         mosaic=0,
