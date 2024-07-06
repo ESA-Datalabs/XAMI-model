@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pyparsing import with_class
 import torch
 import numpy as np
@@ -322,34 +323,32 @@ class XAMI:
         images_dir, 
         num_batches, 
         optimizer=None):
-        assert phase in ['train', 'val'], "Phase must be 'train' or 'val'"
+        assert phase in ['train', 'val', 'evaluation'], "Phase must be 'train', 'val' or 'evaluation'"
         
         if phase == 'train':
             self.model.train()  
         else:
             self.model.eval() 
-
         epoch_sam_loss = []
+        results_dict = defaultdict(list)
+
         all_preds, all_gts, all_pred_cls, all_gt_cls, all_iou_scores, all_mask_areas, pred_images = [], [], [], [], [], [], []
-        for batch_idx in tqdm(range(num_batches), desc=f'{phase[0].upper()+phase[1:]} Progress', bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
+        all_non_m_preds, all_non_m_gts, all_non_m_pred_cls, all_non_m_gt_cls, all_non_m_iou_scores = [], [], [], [], []
+        for batch_idx in tqdm(range(num_batches), desc=f'{phase[0].upper()+phase[1:]} Progress', \
+            bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
             start_idx = batch_idx * batch_size
             end_idx = start_idx + batch_size
             batch_files = image_files[start_idx:end_idx]
 
             batch_losses_sam = []
-
             for image_name in batch_files:
                 image_path = images_dir + image_name
                 image = cv2.imread(image_path, cv2.COLOR_BGR2RGB)
-                obj_results = yolov8_pretrained_model.predict(image_path, verbose=False, conf=0.2) 
+                obj_results = yolov8_pretrained_model.predict(image_path, verbose=False, conf=0.25) 
                 gt_masks = yolo_predictor_utils.get_masks_from_image(images_dir, image_name) 
                 gt_classes = yolo_predictor_utils.get_classes_from_image(images_dir, image_name) 
-                
-                if len(obj_results[0]) == 0 or len(gt_masks) == 0: # SAM specific
-                    del obj_results
-                    continue
-                
-                gt_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in gt_masks], dim=0).to(self.device)
+                if len(gt_masks)>0:
+                    gt_masks_tensor = torch.stack([torch.from_numpy(mask).unsqueeze(0) for mask in gt_masks], dim=0).to(self.device)
                 
                 # set a specific mean for each image
                 input_image = predictor_utils.set_mean_and_transform(image, self.model, self.transform, self.device)
@@ -363,28 +362,60 @@ class XAMI:
                 input_boxes = torch.from_numpy(input_boxes).to(self.device)
                 sam_mask, yolo_masks = [], []
                 
-                if self.use_yolo_masks:
+                if self.use_yolo_masks and len(obj_results[0]) > 0:
                     non_resized_masks = obj_results[0].masks.data.cpu().numpy()
                 
                     for i in range(len(non_resized_masks)):
                             yolo_masks.append(cv2.resize(non_resized_masks[i], image.shape[:2][::-1], interpolation=cv2.INTER_LINEAR)) 
-
-                sparse_embeddings, dense_embeddings = self.model.prompt_encoder(points=None, boxes=input_boxes, masks=None)
-                pred_masks, threshold_masks, iou_predictions = self.decode_and_postprocess(
-                image_embedding,
-                sparse_embeddings,
-                dense_embeddings,
-                (1024, 1024),
-                image.shape[:-1])
                 
-                sam_mask_pre = (threshold_masks > 0.5)*1.0
-                sam_mask.append(sam_mask_pre.squeeze(1))
-
+                if len(obj_results[0])>0:
+                    pred_classes = obj_results[0].boxes.cls.cpu().numpy()
+                    sparse_embeddings, dense_embeddings = self.model.prompt_encoder(points=None, boxes=input_boxes, masks=None)
+                    _, threshold_masks, iou_predictions = self.decode_and_postprocess(
+                    image_embedding,
+                    sparse_embeddings,
+                    dense_embeddings,
+                    (1024, 1024),
+                    image.shape[:-1])
+                    
+                    # # filter false positive masks caused by XMM-OM black corners 
+                    # yolo_masks, threshold_masks, pred_classes, iou_predictions = self.filter_false_positive_masks(
+                    #     image, yolo_masks, threshold_masks, pred_classes, iou_predictions)
+                    # # print('Filtered false positive masks', len(yolo_masks), threshold_masks.shape, pred_classes.shape, iou_predictions.shape)
+                    
+                if phase == 'evaluation':
+                    # false positives
+                    if len(gt_masks) == 0 and len(obj_results[0]) > 0: # and self.use_yolo_masks
+                        conf_scores = obj_results[0].boxes.conf.detach().cpu().numpy()
+                        all_non_m_preds.append(np.array([threshold_masks[i][0].detach().cpu().numpy()>0.5*1 for i in range(len(threshold_masks))]))
+                        all_non_m_pred_cls.append(pred_classes)
+                        all_non_m_iou_scores.append(np.array([[conf_score] for conf_score in conf_scores])) # an approximation
+                        pred_images.append(image_name)
+                        all_non_m_gts.append(np.array([]))
+                        all_non_m_gt_cls.append(np.array([]))
+                        del obj_results
+                        continue
+                    
+                    elif len(gt_masks) > 0 and len(obj_results[0]) == 0: 
+                        all_non_m_gts.append(np.array([np.expand_dims(gt_mask, axis=0) for gt_mask in gt_masks]))
+                        all_non_m_gt_cls.append(np.array(gt_classes))
+                        pred_images.append(image_name)
+                        all_non_m_preds.append(np.array([]))
+                        all_non_m_pred_cls.append(np.array([]))
+                        all_non_m_iou_scores.append(np.array([]))
+                        del obj_results
+                        continue
+                
+                # SAM was trained only with prompts for non-empty GT masks and predicted masks were checked against corresp GT masks
+                if len(obj_results[0]) == 0 or len(gt_masks) == 0:
+                    del obj_results
+                    continue
+                
                 # segm_loss_sam, preds, gts, gt_classes_match, pred_classes_match, ious_match, mask_areas = loss_utils.segm_loss_match_iou_based(
                 #     self.use_yolo_masks,
                 #     threshold_masks, 
                 #     gt_masks_tensor, 
-                #     obj_results[0].boxes.cls.detach().cpu().numpy(), 
+                #     pred_classes, 
                 #     gt_classes, 
                 #     iou_predictions,
                 #     mask_areas,
@@ -397,7 +428,7 @@ class XAMI:
                     self.use_yolo_masks,
                     threshold_masks,
                     gt_masks_tensor, 
-                    obj_results[0].boxes.cls.detach().cpu().numpy(), 
+                    pred_classes, 
                     gt_classes, 
                     iou_predictions,
                     mask_areas,
@@ -406,7 +437,6 @@ class XAMI:
                     self.wt_classes_ids,
                     self.wt_threshold)
                     
-                # ious, iou_image_loss = predictor_utils.calculate_iou_loss(np.array(preds), np.array(gts), ious_match, mask_areas)
                 threshold_preds = np.array([preds[i][0]>0.5*1 for i in range(len(preds))])
                 all_preds.append(threshold_preds)
                 all_gts.append(gts)
@@ -416,44 +446,31 @@ class XAMI:
                 all_mask_areas.append(mask_areas)
                 pred_images.append(image_name)
                 
+                if phase == 'evaluation':
+                    threshold_preds = np.array([threshold_masks[i][0].detach().cpu().numpy()>0.5*1 for i in range(len(threshold_masks))])
+                    all_non_m_preds.append(threshold_preds)
+                    all_non_m_gts.append(gt_masks_tensor.detach().cpu().numpy())
+                    all_non_m_gt_cls.append(np.array(gt_classes))
+                    all_non_m_pred_cls.append(pred_classes)
+                    all_non_m_iou_scores.append(iou_predictions.detach().cpu().numpy())
+                    # if 1 in gt_classes or 1 in pred_classes:
+                    #     # plot predictions and ground truths
+                    #     fig, axes = plt.subplots(1, 3, figsize=(20, 10))
+                    #     axes[0].imshow(image)
+                    #     dataset_utils.show_masks(gt_masks_tensor.detach().cpu().numpy(), axes[0], random_color=False)
+                    #     axes[0].set_title('Ground truth masks', fontsize=20)
+                    #     axes[1].imshow(image)
+                    #     dataset_utils.show_masks(threshold_preds, axes[1], random_color=False)
+                    #     axes[1].set_title('Predicted masks SAM', fontsize=20)
+                    #     axes[2].imshow(image)
+                    #     dataset_utils.show_masks(yolo_masks, axes[2], random_color=False)
+                    #     axes[2].set_title('Predicted masks YOLO', fontsize=20)
+                    #     plt.show()
+                    #     plt.close()
+                        
                 batch_losses_sam.append(segm_loss_sam)
                 del sparse_embeddings, dense_embeddings, image_embedding
-                del segm_loss_sam, threshold_masks, pred_masks, sam_mask_pre
-                torch.cuda.empty_cache()
-
-                # if phase == 'val' and len(gt_masks) == 0:
-                #     print(image_name)
-                #     fig, axes = plt.subplots(1, 4, figsize=(18, 6)) 
-                    
-                #     # Plot 1: GT Masks
-                #     axes[0].imshow(image)
-                #     axes[0].set_title('GT Masks')
-                #     if len(gt_masks) > 0:
-                #         dataset_utils.show_masks(gt_masks_tensor.squeeze(1).squeeze(1).detach().cpu().numpy(), axes[0], random_color=True)
-        
-                #     # Plot 2: YOLO Masks
-                #     axes[1].imshow(image)
-                #     axes[1].set_title('YOLOv8n predicted Masks')
-                #     dataset_utils.show_masks(yolo_masks, axes[1], random_color=True)
-                    
-                #     # Plot 3: Bounding Boxes
-                #     image1 = cv2.resize(image, (1024, 1024))
-                #     for bbox in input_boxes:
-                #         x1, y1, x2, y2 = bbox.detach().cpu().numpy()
-                #         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                #         cv2.rectangle(image1, (x1, y1), (x2, y2), (0, 255, 0), 2) 
-                #     image1_rgb = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
-                #     axes[2].imshow(image1_rgb)
-                #     axes[2].set_title('YOLOv8n predicted Bboxes')
-                    
-                #     # Plot 4: SAM Masks
-                #     axes[3].imshow(image)
-                #     dataset_utils.show_masks(threshold_preds, axes[3], random_color=True)
-                #     axes[3].set_title('MobileSAM predicted masks')
-                #     plt.tight_layout() 
-                #     # plt.savefig(f'./plots/combined_plots.png')
-                #     plt.show()
-
+                del segm_loss_sam, threshold_masks, _ , iou_predictions
                 del obj_results, image, sam_mask, yolo_masks, input_boxes
                 del threshold_preds, preds, gts, gt_classes_match, pred_classes_match, ious_match
                 torch.cuda.empty_cache()
@@ -466,7 +483,21 @@ class XAMI:
                 mean_loss_sam.backward()
                 optimizer.step()
 
-        return np.mean(epoch_sam_loss), all_preds, all_gts, all_gt_cls, all_pred_cls, all_iou_scores, all_mask_areas, pred_images
+        if phase == 'evaluation':
+            results_dict['preds'] = all_preds
+            results_dict['gts'] = all_gts
+            results_dict['gt_cls'] = all_gt_cls
+            results_dict['pred_cls'] = all_pred_cls
+            results_dict['iou_scores'] = all_iou_scores
+            results_dict['pred_images'] = pred_images
+            results_dict['all_preds'] = all_non_m_preds
+            results_dict['all_gts'] = all_non_m_gts
+            results_dict['all_gt_cls'] = all_non_m_gt_cls
+            results_dict['all_pred_cls'] = all_non_m_pred_cls
+            results_dict['all_iou_scores'] = all_non_m_iou_scores
+            return results_dict
+
+        return np.mean(epoch_sam_loss)
     
     def add_residual(self, image, norm_shape): # [1, 3, 1024, 1024]
         
@@ -640,3 +671,22 @@ class XAMI:
         random.seed(seed)
         np.random.seed(seed)
     
+    def filter_false_positive_masks(self, image, yolo_masks, masks, classes, iou_thresholds, corner_threshold=0.8, mask_threshold=0.2, corner_size=20):
+        
+        if not predictor_utils.is_corner_zero_pixels(image, threshold=corner_threshold, corner_size=corner_size):
+            return yolo_masks, masks, classes, iou_thresholds
+
+        filtered_yolo_masks = []
+        filtered_masks = []
+        filtered_classes = []
+        filtered_iou_thresholds = []
+
+        for i, (mask, cls, iou) in enumerate(zip(masks, classes, iou_thresholds)):
+            if not predictor_utils.mask_in_corner_region(mask, image.shape[:2], threshold=mask_threshold, corner_size=corner_size):
+                filtered_masks.append(mask)
+                filtered_classes.append(cls)
+                filtered_iou_thresholds.append(iou)
+                if len(yolo_masks)>0:
+                    filtered_yolo_masks.append(yolo_masks[i])
+                
+        return filtered_yolo_masks, torch.stack(filtered_masks), np.array(filtered_classes), torch.stack(filtered_iou_thresholds)
