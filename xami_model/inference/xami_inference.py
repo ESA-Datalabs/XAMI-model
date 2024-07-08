@@ -21,7 +21,7 @@ class InferXami:
     model_type='vit_t', 
     use_detr_masks=False, 
     detr_type='yolov8',
-    wt_threshold=0.6,
+    wt_threshold=0.75,
     wt_classes=[1.0, 4.0]):
     
     assert detr_type in ['yolo', 'yolov8', 'rt_detr', 'rtdetr'], "Invalid DETR type. Please choose either 'yolo', 'yolov8', 'rt_detr' or 'rtdetr'."
