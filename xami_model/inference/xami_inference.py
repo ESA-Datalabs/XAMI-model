@@ -13,7 +13,16 @@ from ..model_predictor import predictor_utils
 from ..mobile_sam.mobile_sam import sam_model_registry, SamPredictor 
 
 class InferXami:
-  def __init__(self, device, detr_checkpoint, sam_checkpoint, model_type='vit_t', use_detr_masks=False, detr_type='yolov8'):
+  def __init__(
+    self, 
+    device, 
+    detr_checkpoint, 
+    sam_checkpoint, 
+    model_type='vit_t', 
+    use_detr_masks=False, 
+    detr_type='yolov8',
+    wt_threshold=0.6,
+    wt_classes=[1.0, 4.0]):
     
     assert detr_type in ['yolo', 'yolov8', 'rt_detr', 'rtdetr'], "Invalid DETR type. Please choose either 'yolo', 'yolov8', 'rt_detr' or 'rtdetr'."
     print("Initializing the model...")
@@ -28,7 +37,8 @@ class InferXami:
                     4:('star-loop', (255, 188, 248))}
 
     self.use_detr_masks = use_detr_masks # whether to use YOLO masks for faint sources
-    
+    self.wt_threshold = wt_threshold # threshold for faint sources
+    self.wt_classes = wt_classes # Other and Star-loop classes
     # Step 1: Object detection
     if detr_type.startswith('yolo'):
       self.detector = YOLO(self.detr_checkpoint)
@@ -113,18 +123,18 @@ class InferXami:
       print(escape_code+escape_code, self.classes[predicted_class.item()][0], end='\n')
         
     low_res_masks=self.model_predictor.model.postprocess_masks(low_res_masks, (1024, 1024), image.shape[:-1]).to(self.device)
+    threshold_masks = torch.sigmoid(10 * (low_res_masks - self.mobile_sam_model.mask_threshold)) # sigmoid with steepness
     
     if self.use_detr_masks:
       low_res_masks = predictor_utils.process_faint_masks(
         image, 
-        low_res_masks, 
+        threshold_masks, 
         yolo_masks, 
         predicted_classes, 
         self.device,
-        wt_threshold=0.6, 
-        wt_classes=[1.0, 2.0, 4.0])
+        wt_threshold=self.wt_threshold,
+        wt_classes=self.wt_classes)
 
-    threshold_masks = torch.sigmoid(10 * (low_res_masks - self.mobile_sam_model.mask_threshold)) # sigmoid with steepness
     sam_mask_pre = (threshold_masks > 0.5)*1.0
     inference_time = (time.time()-start_time_all)*1000
     # print(f"Total Inference time:: {inference_time:.2f} ms")
