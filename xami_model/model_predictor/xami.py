@@ -447,20 +447,35 @@ class XAMI:
                 pred_images.append(image_name)
                 
                 if phase == 'evaluation':
-                    threshold_preds = np.array([threshold_masks[i][0].detach().cpu().numpy()>0.5*1 for i in range(len(threshold_masks))])
-                    all_non_m_preds.append(threshold_preds)
+                    if self.use_yolo_masks:
+                        all_p = []
+                        if yolo_masks is not None and self.wt_threshold is not None and self.wt_classes_ids is not None:
+                                for th_mask_i in range(len(threshold_masks)):
+                                    all_p.append(predictor_utils.process_faint_masks(
+                                    image, 
+                                    [threshold_masks[th_mask_i]], 
+                                    [yolo_masks[th_mask_i]], 
+                                    [pred_classes[th_mask_i]], 
+                                    self.device,
+                                    self.wt_threshold,
+                                    self.wt_classes_ids
+                                    )[0].detach().cpu().numpy())
+                        all_p = np.array([all_p[i][0]>0.5*1 for i in range(len(all_p))])
+                    else:
+                        all_p=np.array([threshold_masks[i][0].detach().cpu().numpy()>0.5*1 for i in range(len(threshold_masks))])
+                    all_non_m_preds.append(all_p)
                     all_non_m_gts.append(gt_masks_tensor.detach().cpu().numpy())
                     all_non_m_gt_cls.append(np.array(gt_classes))
                     all_non_m_pred_cls.append(pred_classes)
                     all_non_m_iou_scores.append(iou_predictions.detach().cpu().numpy())
-                    # if 1 in gt_classes or 1 in pred_classes:
+                    # if image_name.startswith("S0653380401_M"):
                     #     # plot predictions and ground truths
                     #     fig, axes = plt.subplots(1, 3, figsize=(20, 10))
                     #     axes[0].imshow(image)
                     #     dataset_utils.show_masks(gt_masks_tensor.detach().cpu().numpy(), axes[0], random_color=False)
                     #     axes[0].set_title('Ground truth masks', fontsize=20)
                     #     axes[1].imshow(image)
-                    #     dataset_utils.show_masks(threshold_preds, axes[1], random_color=False)
+                    #     dataset_utils.show_masks(all_p, axes[1], random_color=False)
                     #     axes[1].set_title('Predicted masks SAM', fontsize=20)
                     #     axes[2].imshow(image)
                     #     dataset_utils.show_masks(yolo_masks, axes[2], random_color=False)
