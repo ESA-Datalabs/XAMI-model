@@ -13,7 +13,7 @@ from ..model_predictor import predictor_utils
 from ..mobile_sam.mobile_sam import sam_model_registry, SamPredictor 
 
 class InferXami:
-  def __init__(self, device, detr_checkpoint, sam_checkpoint, model_type='vit_t', use_detr_masks=False, detr_type='yolo'):
+  def __init__(self, device, detr_checkpoint, sam_checkpoint, model_type='vit_t', use_detr_masks=False, detr_type='yolov8'):
     
     assert detr_type in ['yolo', 'yolov8', 'rt_detr', 'rtdetr'], "Invalid DETR type. Please choose either 'yolo', 'yolov8', 'rt_detr' or 'rtdetr'."
     print("Initializing the model...")
@@ -79,11 +79,11 @@ class InferXami:
       )
       
   @torch.no_grad()
-  def run_predict(self, image_path, yolo_conf=0.2, show_masks=False):
+  def run_predict(self, image_path, det_conf=0.2, show_masks=False):
 
     start_time_all = time.time()
     image = cv2.imread(image_path)
-    obj_results = self.detector.predict(image_path, verbose=False, conf=yolo_conf) 
+    obj_results = self.detector.predict(image_path, verbose=False, conf=det_conf) 
 
     # set a specific mean for each image
     input_image = predictor_utils.set_mean_and_transform(image, self.mobile_sam_model, self.transform, self.device)
@@ -124,11 +124,7 @@ class InferXami:
         wt_threshold=0.6, 
         wt_classes=[1.0, 2.0, 4.0])
 
-    # Apply Gaussian filter on logits
-    kernel_size, sigma = 5, 2
-    gaussian_kernel = predictor_utils.create_gaussian_kernel(kernel_size, sigma).to(self.device)
-    pred_masks = torch.nn.functional.conv2d(low_res_masks, gaussian_kernel, padding=kernel_size//2)
-    threshold_masks = torch.sigmoid(10 * (pred_masks - self.mobile_sam_model.mask_threshold)) # sigmoid with steepness
+    threshold_masks = torch.sigmoid(10 * (low_res_masks - self.mobile_sam_model.mask_threshold)) # sigmoid with steepness
     sam_mask_pre = (threshold_masks > 0.5)*1.0
     inference_time = (time.time()-start_time_all)*1000
     # print(f"Total Inference time:: {inference_time:.2f} ms")
