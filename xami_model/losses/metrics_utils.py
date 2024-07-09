@@ -278,7 +278,7 @@ def iou_metrics_tp_fp_fn(pred_masks, gt_masks):
         
     return tp_ious, fp_ious, fn_ious
 
-def iou_cls_tp_fp_fn(pred_masks, gt_masks, pred_classes, gt_classes):
+def iou_cls_tp_fp_fn(pred_masks, gt_masks, pred_classes, gt_classes, iou_threshold=0.2):
     overall_tp_ious = []
     overall_fp_ious = []
     overall_fn_ious = []
@@ -304,8 +304,8 @@ def iou_cls_tp_fp_fn(pred_masks, gt_masks, pred_classes, gt_classes):
             else: 
                 ious = compute_ious(pred_masks_cls, gt_masks_cls)
                 max_ious, max_indices = max_iou_per_pred(find_assignments(ious, gt_masks_cls, pred_masks_cls))
-                tp_ious = max_ious[max_ious > 0]
-                matched_gts = max_indices[max_ious > 0]
+                tp_ious = max_ious[max_ious >= iou_threshold]
+                matched_gts = max_indices[max_ious >= iou_threshold]
     
                 if len(pred_masks_cls) > 0:
                     fp_ious = np.zeros(len(pred_masks_cls) - len(matched_gts))
