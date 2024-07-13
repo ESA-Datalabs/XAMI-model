@@ -386,10 +386,9 @@ class XAMI:
                 if phase == 'evaluation':
                     # false positives
                     if len(gt_masks) == 0 and len(obj_results[0]) > 0: # and self.use_yolo_masks
-                        conf_scores = obj_results[0].boxes.conf.detach().cpu().numpy()
                         all_non_m_preds.append(np.array([threshold_masks[i][0].detach().cpu().numpy()>0.5*1 for i in range(len(threshold_masks))]))
                         all_non_m_pred_cls.append(pred_classes)
-                        all_non_m_iou_scores.append(np.array([[conf_score] for conf_score in conf_scores])) # an approximation
+                        all_non_m_iou_scores.append(iou_predictions.detach().cpu().numpy())
                         pred_images.append(image_name)
                         all_non_m_gts.append(np.array([]))
                         all_non_m_gt_cls.append(np.array([]))
@@ -468,7 +467,6 @@ class XAMI:
                     all_non_m_gt_cls.append(np.array(gt_classes))
                     all_non_m_pred_cls.append(pred_classes)
                     all_non_m_iou_scores.append(iou_predictions.detach().cpu().numpy())
-                    # if image_name.startswith("S0653380401_M"):
                     #     # plot predictions and ground truths
                     #     fig, axes = plt.subplots(1, 3, figsize=(20, 10))
                     #     axes[0].imshow(image)
