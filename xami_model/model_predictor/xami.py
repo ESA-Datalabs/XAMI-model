@@ -332,7 +332,7 @@ class XAMI:
         epoch_sam_loss = []
         results_dict = defaultdict(list)
 
-        all_preds, all_gts, all_pred_cls, all_gt_cls, all_iou_scores, all_mask_areas, pred_images = [], [], [], [], [], [], []
+        pred_images = []
         all_non_m_preds, all_non_m_gts, all_non_m_pred_cls, all_non_m_gt_cls, all_non_m_iou_scores = [], [], [], [], []
         for batch_idx in tqdm(range(num_batches), desc=f'{phase[0].upper()+phase[1:]} Progress', \
             bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
@@ -437,12 +437,6 @@ class XAMI:
                     self.wt_threshold)
                     
                 threshold_preds = np.array([preds[i][0]>0.5*1 for i in range(len(preds))])
-                all_preds.append(threshold_preds)
-                all_gts.append(gts)
-                all_gt_cls.append(gt_classes_match)
-                all_pred_cls.append(pred_classes_match)
-                all_iou_scores.append(ious_match)
-                all_mask_areas.append(mask_areas)
                 pred_images.append(image_name)
                 
                 if phase == 'evaluation':
@@ -497,11 +491,6 @@ class XAMI:
                 optimizer.step()
 
         if phase == 'evaluation':
-            results_dict['preds'] = all_preds
-            results_dict['gts'] = all_gts
-            results_dict['gt_cls'] = all_gt_cls
-            results_dict['pred_cls'] = all_pred_cls
-            results_dict['iou_scores'] = all_iou_scores
             results_dict['pred_images'] = pred_images
             results_dict['all_preds'] = all_non_m_preds
             results_dict['all_gts'] = all_non_m_gts
