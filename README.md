@@ -46,23 +46,30 @@ After cloning the repository and setting up the environment, use the following P
 ```python
 from xami_model.inference.xami_inference import InferXami
 
-detr_checkpoint = './xami_model/train/weights/yolo_weights/last.pt'
-sam_checkpoint = './xami_model/train/weights/sam_weights/sam_0_best.pt'
+# the RT-DETR backbone performs better than YOLO (except on 'Other' class) on our dataset.
+# however, YOLOv8n is faster and has a good speed-accuracy trade-off, with usually -10ms on inference compared to RT-DETR
 
-# the SAM checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
+det_type = 'yolov8' # 'yolov8' or 'rtdetr'
+
+detr_checkpoint = f'./xami_model/train/weights/{det_type}_sam_weights/{det_type}_detect_300e_best.pt'
+sam_checkpoint = f'./xami_model/train/weights/{det_type}_sam_weights/{det_type}_sam.pth'
+
+#❗️the SAM checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
+#❗️the detr_type and its checkpoints must be compatible
 detr_sam_pipeline = InferXami(
     device='cuda:0',
     detr_checkpoint=detr_checkpoint,
     sam_checkpoint=sam_checkpoint,
     model_type='vit_t',
-    use_detr_masks=False)
+    use_detr_masks=True,
+    detr_type=det_type)
 
 masks = detr_sam_pipeline.run_predict('./example_images/S0893811101_M.png', show_masks=True)
 ```
 
 ## 🚀 Training the model
 
-Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/main/train/README.md).
+Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/main/xami_model/train/README.md).
 
 ## © Licence 
 
