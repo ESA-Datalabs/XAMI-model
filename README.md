@@ -11,9 +11,13 @@ Information about the XMM-OM can be found here:
 - Technical details: https://www.cosmos.esa.int/web/xmm-newton/technical-details-om.
 - The article https://ui.adsabs.harvard.edu/abs/2001A%26A...365L..36M/abstract.
 
-![The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.](https://github.com/ESA-Datalabs/XAMI-model/blob/main/example_images/xami_model.png)
+<p align="center">
+  <img src="https://github.com/ESA-Datalabs/XAMI-model/blob/main/example_images/xami_model.png" alt="The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset." width="40%">
+</p>
 
-*Figure 1: The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.*
+<p align="center">
+  <em>Figure 1: The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.</em>
+</p>
 
 ## Cloning the repository
 
@@ -78,9 +82,13 @@ Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/m
 
 ## Performance metrics 
 
-![Cumulative distribution of IoUs between predicted and true masks using RT-DETR as detector.](https://github.com/ESA-Datalabs/XAMI-model/blob/main/example_images/ious_rtdetr.png)
+<p align="center">
+  <img src="https://github.com/ESA-Datalabs/XAMI-model/blob/main/example_images/ious_rtdetr.png" alt="Cumulative distribution of IoUs between predicted and true masks using RT-DETR as detector." width="50%">
+</p>
 
-*Figure 1: Cumulative distribution of IoUs between predicted and true masks using RT-DETR as detector.*
+<p align="center">
+  <em>Figure 2: Cumulative distribution of IoUs between predicted and true masks using RT-DETR as detector.</em>
+</p>
 
 <table style="width: 48%; display: inline-block; vertical-align: top;">
   <tr>
