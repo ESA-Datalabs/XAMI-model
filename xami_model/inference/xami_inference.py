@@ -78,7 +78,7 @@ class InferXami:
       None
     """
     # Warm up YOLO model
-    for _ in tqdm.tqdm(range(number_of_runs), desc="Warming up YOLO model", bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
+    for _ in tqdm.tqdm(range(number_of_runs), desc="Warming up detector model", bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}'):
       _ = self.detector.predict('./xami_model/inference/warmup_image.png', verbose=False, conf=0.2) 
 
     # Warm up SAM model

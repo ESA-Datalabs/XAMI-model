@@ -3,11 +3,15 @@
 </div>
 
 ## Introduction
-The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images represent observations from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
+The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images are astronomical observations from the Optical Monitor (XMM-OM) onboard the XMM-Newton X-ray mission. 
+
+Information about the XMM-OM can be found here: 
 
 - XMM-OM User's Handbook: https://www.mssl.ucl.ac.uk/www_xmm/ukos/onlines/uhb/XMM_UHB/node1.html.
 - Technical details: https://www.cosmos.esa.int/web/xmm-newton/technical-details-om.
 - The article https://ui.adsabs.harvard.edu/abs/2001A%26A...365L..36M/abstract.
+
+![The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.](./example_images/xami_model.pdf)
 
 ## Cloning the repository
 
@@ -25,11 +29,9 @@ pip install -e .
 
 ## Downloading the dataset and model checkpoints from HuggingFace
 
-Check [dataset_and_model.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/dataset_and_model.ipynb) for downloading the dataset and model weights. 
-
 The dataset is splited into train and validation categories and contains annotated artefacts in COCO format for Instance Segmentation. We use multilabel Stratified K-fold (k=4) to balance class distributions across splits. We choose to work with a single dataset splits version (out of 4) but also provide means to work with all 4 versions.
 
-To better understand our dataset structure, please check the [Dataset-Structure.md](https://github.com/ESA-Datalabs/XAMI-dataset/blob/main/Datasets-Structure.md) for more details. We provide the following dataset formats: COCO format for Instance Segmentation (commonly used by [Detectron2](https://github.com/facebookresearch/detectron2) models) and YOLOv8-Seg format used by [ultralytics](https://github.com/ultralytics/ultralytics).
+To better understand our dataset structure, the [Dataset-Structure.md](https://github.com/ESA-Datalabs/XAMI-dataset/blob/main/Datasets-Structure.md) offers more details about this. We provide the following dataset formats: COCO format for Instance Segmentation (commonly used by [Detectron2](https://github.com/facebookresearch/detectron2) models) and YOLOv8-Seg format used by [ultralytics](https://github.com/ultralytics/ultralytics).
 
 <!-- 1. **Downloading** the dataset archive from [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset/blob/main/xami_dataset.zip).
 
@@ -39,9 +41,12 @@ DEST_DIR='.' # destination folder for the dataset (should usually be set to curr
 huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type dataset --local-dir "$DEST_DIR" && unzip "$DEST_DIR/xami_dataset.zip" -d "$DEST_DIR" && rm "$DEST_DIR/xami_dataset.zip"
 ``` -->
 
+
+Check the [dataset_and_model.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/dataset_and_model.ipynb) for downloading the dataset and model weights.
+
 ## Model Inference
 
-After cloning the repository and setting up the environment, use the following Python code for model loading and inference:
+After cloning the repository and setting up the environment, use the following code to load the model and infer:
 
 ```python
 from xami_model.inference.xami_inference import InferXami
@@ -49,7 +54,7 @@ from xami_model.inference.xami_inference import InferXami
 # the RT-DETR backbone performs better than YOLO (except on 'Other' class) on our dataset.
 # however, YOLOv8n is faster and has a good speed-accuracy trade-off, with usually -10ms on inference compared to RT-DETR
 
-det_type = 'yolov8' # 'yolov8' or 'rtdetr'
+det_type = 'rtdetr' # 'rtdetr' or 'yolov8'
 
 detr_checkpoint = f'./xami_model/train/weights/{det_type}_sam_weights/{det_type}_detect_300e_best.pt'
 sam_checkpoint = f'./xami_model/train/weights/{det_type}_sam_weights/{det_type}_sam.pth'
@@ -67,9 +72,51 @@ detr_sam_pipeline = InferXami(
 masks = detr_sam_pipeline.run_predict('./example_images/S0893811101_M.png', show_masks=True)
 ```
 
-## 🚀 Training the model
+## Training the model
 
 Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/main/xami_model/train/README.md).
+
+## Performance metrics 
+
+<table>
+  <tr>
+    <th>Model</th>
+    <th>Category</th>
+    <th>Precision</th>
+    <th>Recall</th>
+  </tr>
+  <tr>
+    <td rowspan="6">XAMI (RT-DETR)</td>
+    <td>Overall</td>
+    <td>89.1</td>
+    <td>97.0</td>
+  </tr>
+  <tr>
+    <td>Central-Ring</td>
+    <td>89.1</td>
+    <td>97.0</td>
+  </tr>
+  <tr>
+    <td>Read-out-Streak</td>
+    <td>68.3</td>
+    <td>95.3</td>
+  </tr>
+  <tr>
+    <td>Smoke-Ring</td>
+    <td>78.1</td>
+    <td>93.8</td>
+  </tr>
+  <tr>
+    <td>Stray-Light</td>
+    <td>71.6</td>
+    <td>83.3</td>
+  </tr>
+  <tr>
+    <td><i>Other</i></td>
+    <td>6.2</td>
+    <td>22.2</td>
+  </tr>
+</table>
 
 ## © Licence 
 
