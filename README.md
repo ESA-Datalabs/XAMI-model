@@ -2,14 +2,14 @@
 <h1> XAMI: XMM-Newton optical Artefact Mapping for astronomical Instance segmentation </h1>
 </div>
 
-## 💫 Introduction
+## Introduction
 The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace🤗](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images represent observations from the XMM-Newton's Opical Monitor (XMM-OM). Information about the XMM-OM can be found here: 
 
 - XMM-OM User's Handbook: https://www.mssl.ucl.ac.uk/www_xmm/ukos/onlines/uhb/XMM_UHB/node1.html.
 - Technical details: https://www.cosmos.esa.int/web/xmm-newton/technical-details-om.
 - The article https://ui.adsabs.harvard.edu/abs/2001A%26A...365L..36M/abstract.
 
-## 📂 Cloning the repository
+## Cloning the repository
 
 ```bash
 git clone https://github.com/ESA-Datalabs/XAMI-model.git
@@ -23,7 +23,7 @@ conda activate xami_model_env
 pip install -e .
 ```
 
-## 📊 Downloading the dataset and model checkpoints from HuggingFace🤗
+## Downloading the dataset and model checkpoints from HuggingFace
 
 Check [dataset_and_model.ipynb](https://github.com/ESA-Datalabs/XAMI-model/blob/main/dataset_and_model.ipynb) for downloading the dataset and model weights. 
 
@@ -39,7 +39,7 @@ DEST_DIR='.' # destination folder for the dataset (should usually be set to curr
 huggingface-cli download iulia-elisa/XAMI-dataset xami_dataset.zip --repo-type dataset --local-dir "$DEST_DIR" && unzip "$DEST_DIR/xami_dataset.zip" -d "$DEST_DIR" && rm "$DEST_DIR/xami_dataset.zip"
 ``` -->
 
-## 💡 Model Inference
+## Model Inference
 
 After cloning the repository and setting up the environment, use the following Python code for model loading and inference:
 
