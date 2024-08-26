@@ -11,7 +11,7 @@ Information about the XMM-OM can be found here:
 - Technical details: https://www.cosmos.esa.int/web/xmm-newton/technical-details-om.
 - The article https://ui.adsabs.harvard.edu/abs/2001A%26A...365L..36M/abstract.
 
-![The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.](./example_images/xami_model.pdf)
+![The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.](https://github.com/ESA-Datalabs/XAMI-model/blob/main/example_images/xami_model.pdf)
 
 ## Cloning the repository
 
@@ -59,13 +59,11 @@ det_type = 'rtdetr' # 'rtdetr' or 'yolov8'
 detr_checkpoint = f'./xami_model/train/weights/{det_type}_sam_weights/{det_type}_detect_300e_best.pt'
 sam_checkpoint = f'./xami_model/train/weights/{det_type}_sam_weights/{det_type}_sam.pth'
 
-#❗️the SAM checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
-#❗️the detr_type and its checkpoints must be compatible
 detr_sam_pipeline = InferXami(
     device='cuda:0',
     detr_checkpoint=detr_checkpoint,
     sam_checkpoint=sam_checkpoint,
-    model_type='vit_t',
+    model_type='vit_t', # the SAM checkpoint and model_type (vit_h, vit_t, etc.) must be compatible
     use_detr_masks=True,
     detr_type=det_type)
 
@@ -78,7 +76,7 @@ Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/m
 
 ## Performance metrics 
 
-<table>
+<table style="width: 45%; display: inline-table;">
   <tr>
     <th>Model</th>
     <th>Category</th>
@@ -87,9 +85,9 @@ Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/m
   </tr>
   <tr>
     <td rowspan="6">XAMI (RT-DETR)</td>
-    <td>Overall</td>
-    <td>89.1</td>
-    <td>97.0</td>
+    <td><b>Overall</b></td>
+    <td><b>62.7</b></td>
+    <td><b>78.3</b></td>
   </tr>
   <tr>
     <td>Central-Ring</td>
@@ -118,7 +116,46 @@ Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/m
   </tr>
 </table>
 
+<table style="width: 45%; display: inline-table; margin-left: 10px;">
+  <tr>
+    <th>Model</th>
+    <th>Category</th>
+    <th>Precision</th>
+    <th>Recall</th>
+  </tr>
+  <tr>
+    <td rowspan="6">XAMI (YOLO-v8n)</td>
+    <td><b>Overall</b></td>
+    <td><b>84.3</b></td>
+    <td><b>72.1</b></td>
+  </tr>
+  <tr>
+    <td>Central-Ring</td>
+    <td>89.3</td>
+    <td>94.0</td>
+  </tr>
+  <tr>
+    <td>Read-out-Streak</td>
+    <td>71.1</td>
+    <td>73.3</td>
+  </tr>
+  <tr>
+    <td>Smoke-Ring</td>
+    <td>80.6</td>
+    <td>85.6</td>
+  </tr>
+  <tr>
+    <td>Stray-Light</td>
+    <td>80.5</td>
+    <td>74.1</td>
+  </tr>
+  <tr>
+    <td><i>Other</i></td>
+    <td>100.0</td>
+    <td>33.3</td>
+  </tr>
+</table>
+
 ## © Licence 
 
 This project is licensed under [MIT license](LICENSE).
-
