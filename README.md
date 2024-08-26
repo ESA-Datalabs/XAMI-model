@@ -11,7 +11,9 @@ Information about the XMM-OM can be found here:
 - Technical details: https://www.cosmos.esa.int/web/xmm-newton/technical-details-om.
 - The article https://ui.adsabs.harvard.edu/abs/2001A%26A...365L..36M/abstract.
 
-![The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.](https://github.com/ESA-Datalabs/XAMI-model/blob/main/example_images/xami_model.pdf)
+![The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.](https://github.com/ESA-Datalabs/XAMI-model/blob/main/example_images/xami_model.png)
+
+*Figure 1: The XAMI model combining a detector and segmentor, while freezing the detector model previously trained on the XAMI dataset.*
 
 ## Cloning the repository
 
@@ -76,7 +78,11 @@ Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/m
 
 ## Performance metrics 
 
-<table style="width: 45%; display: inline-table;">
+![Cumulative distribution of IoUs between predicted and true masks using RT-DETR as detector.](https://github.com/ESA-Datalabs/XAMI-model/blob/main/example_images/ious_rtdetr.png)
+
+*Figure 1: Cumulative distribution of IoUs between predicted and true masks using RT-DETR as detector.*
+
+<table style="width: 48%; display: inline-block; vertical-align: top;">
   <tr>
     <th>Model</th>
     <th>Category</th>
@@ -116,7 +122,7 @@ Check the training [README.md](https://github.com/ESA-Datalabs/XAMI-model/blob/m
   </tr>
 </table>
 
-<table style="width: 45%; display: inline-table; margin-left: 10px;">
+<table style="width: 48%; display: inline-block; vertical-align: top; margin-left: 1%;">
   <tr>
     <th>Model</th>
     <th>Category</th>
