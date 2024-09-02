@@ -4,7 +4,7 @@
 
 The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images are astronomical observations from the Optical Monitor (XMM-OM) onboard the XMM-Newton X-ray mission of the European Space Agency (ESA).
 
-Information about the XMM-OM can be found here: 
+Information about the XMM-OM can be found at: 
 
 - [The ESA website](https://www.cosmos.esa.int/web/xmm-newton/technical-details-om)
 - [The article *The XMM-Newton optical/UV monitor telescope*](https://ui.adsabs.harvard.edu/abs/2001A%26A...365L..36M/abstract).
