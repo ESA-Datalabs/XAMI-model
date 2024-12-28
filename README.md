@@ -1,15 +1,12 @@
 <div align="center">
-<h1> XAMI: XMM-Newton optical Artefact Mapping for astronomical Instance segmentation </h1>
-</div>
-
+<h1> XAMI: XMM-Newton optical Artefact Mapping for astronomical Instance segmentation 
+  
 <p align="center">
   <a href="https://arxiv.org/abs/2406.17323">
     <img src="https://img.shields.io/badge/arXiv-2406.17323-b31b1b.svg" alt="arXiv">
   </a>
-  <a href="https://opensource.org/licenses/MIT">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="licence">
-  </a>
-</p>
+</p></h1>
+</div>
 
 The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images are astronomical observations from the Optical Monitor (XMM-OM) onboard the XMM-Newton X-ray mission of the European Space Agency (ESA).
 
