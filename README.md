@@ -2,6 +2,19 @@
 <h1> XAMI: XMM-Newton optical Artefact Mapping for astronomical Instance segmentation </h1>
 </div>
 
+<p align="center">
+  <a href="https://arxiv.org/abs/2406.17323">
+    <img src="https://img.shields.io/badge/arXiv-2406.17323-b31b1b.svg" alt="arXiv">
+  </a>
+  <a href="https://opensource.org/licenses/MIT">
+    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="licence">
+  </a>
+  <br>
+    <a href="https://huggingface.co/iulia-elisa/XAMI-model">
+    <img src="https://cdn-lfs.hf.co/repos/96/a2/96a2c8468c1546e660ac2609e49404b8588fcf5a748761fa72c154b2836b4c83/fc95837e1bacb9b2cdbff9ae5d681ed8f20233b8fc72a65cdb38321ea9ddc015?response-content-disposition=inline%3B+filename*%3DUTF-8%27%27hf-logo-with-title.svg%3B+filename%3D%22hf-logo-with-title.svg%22%3B&response-content-type=image%2Fsvg%2Bxml&Expires=1735645463&Policy=eyJTdGF0ZW1lbnQiOlt7IkNvbmRpdGlvbiI6eyJEYXRlTGVzc1RoYW4iOnsiQVdTOkVwb2NoVGltZSI6MTczNTY0NTQ2M319LCJSZXNvdXJjZSI6Imh0dHBzOi8vY2RuLWxmcy5oZi5jby9yZXBvcy85Ni9hMi85NmEyYzg0NjhjMTU0NmU2NjBhYzI2MDllNDk0MDRiODU4OGZjZjVhNzQ4NzYxZmE3MmMxNTRiMjgzNmI0YzgzL2ZjOTU4MzdlMWJhY2I5YjJjZGJmZjlhZTVkNjgxZWQ4ZjIwMjMzYjhmYzcyYTY1Y2RiMzgzMjFlYTlkZGMwMTU%7EcmVzcG9uc2UtY29udGVudC1kaXNwb3NpdGlvbj0qJnJlc3BvbnNlLWNvbnRlbnQtdHlwZT0qIn1dfQ__&Signature=YwHRkGxW9Qwl2dtYPp7YjK4zyoWLXxlujyOpNGhosxmhRsoxs3o3Fx7cQ-CSErvAlV0r5VEO%7EfG4spurQ1OJN6N4j%7E9E3Ddkijqn3VI1I2X1y2z4f7JnpXFjX5jsDD9%7E3qz1aKjUL5PvdwwL%7E55wGaLkAxuWjIxTs9pP3fGPaQh-CZy1nf2v7PkFvfN1g8dKsGn2dZ94MspOn1z0G7gk6r6hf21urKc8aVYA4xe%7EX-RPpex7mnhyq5w5j6iRSxzEOcWH3ANSDjMxZGYilVHfP8VBB4-CqSANB6gaVcHj84fe7iUiEAyHVkScMZMEYNSXS2Ewl8iW7E14Nk27eCBUaA__&Key-Pair-Id=K3RPWS32NSSJCE" alt="Hugging Face" width="100">
+  </a>
+</p>
+
 The code uses images from the XAMI dataset (available on [Github](https://github.com/ESA-Datalabs/XAMI-dataset) and [HuggingFace](https://huggingface.co/datasets/iulia-elisa/XAMI-dataset)). The images are astronomical observations from the Optical Monitor (XMM-OM) onboard the XMM-Newton X-ray mission of the European Space Agency (ESA).
 
 Information about the XMM-OM can be found at: 
