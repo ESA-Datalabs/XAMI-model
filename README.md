@@ -39,7 +39,7 @@ pip install -e .
 
 ## Downloading the dataset and model checkpoints from HuggingFace
 
-The dataset is splited into train and validation categories and contains annotated artefacts in COCO format for Instance Segmentation. We use multilabel Stratified K-fold (k=4) to balance class distributions across splits. We choose to work with a single dataset splits version (out of 4) but also provide means to work with all 4 versions.
+The dataset is split into train and validation categories and contains annotated artefacts in COCO format for Instance Segmentation. We use multilabel Stratified K-fold (k=4) to balance class distributions across splits.
 
 The [Dataset-Structure.md](https://github.com/ESA-Datalabs/XAMI-dataset/blob/main/Datasets-Structure.md) offers more details about the dataset structure. We provide the following dataset formats: COCO format for Instance Segmentation (commonly used by [Detectron2](https://github.com/facebookresearch/detectron2) models) and YOLOv8-Seg format used by [ultralytics](https://github.com/ultralytics/ultralytics).
 
